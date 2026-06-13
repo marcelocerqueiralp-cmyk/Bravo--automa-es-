@@ -231,6 +231,9 @@ export default function BravoCRM() {
   const [saving, setSaving]             = useState(false);
   const [toast, setToast]               = useState(null);
   const [progresso, setProgresso]       = useState(null);
+  const [importandoBase, setImportandoBase] = useState(false);
+  const [progressoBase, setProgressoBase]   = useState(null);
+  const [nexPagBase, setNexPagBase]         = useState(0);
   const [totalBen, setTotalBen]         = useState(0);
   const fileRef = useRef();
 
@@ -302,6 +305,73 @@ export default function BravoCRM() {
     } catch(e){ console.error(e); }
     setLoading(false);
   },[filtros]);
+
+  // ═══ IMPORTAR DA BASE PRINCIPAL (SB2 — 337.897 beneficiários) ═══
+  const importarDaBasePrincipal = async (pagina = 0) => {
+    setImportandoBase(true);
+    setProgressoBase({ etapa: "Conectando à base principal...", pct: 5, total: 337897, importados: 0 });
+    try {
+      const POR_VEZ = 500;
+      let totalImportado = 0;
+      let paginaAtual = pagina;
+      let continuar = true;
+      const MAX_PAGINAS = 10; // 5.000 registros por rodada
+
+      while (continuar && paginaAtual < pagina + MAX_PAGINAS) {
+        const offset = paginaAtual * POR_VEZ;
+        setProgressoBase({ etapa: `Buscando registros ${fmtNum(offset + 1)}–${fmtNum(offset + POR_VEZ)}...`, pct: Math.min(5 + Math.round(totalImportado / 5000 * 85), 90), total: 337897, importados: totalImportado });
+
+        const r = await fetch(
+          `${SB2.url}/rest/v1/base_servidores?select=dados&limit=${POR_VEZ}&offset=${offset}&order=id.asc`,
+          { headers: { apikey: SB2.key, Authorization: `Bearer ${SB2.key}` } }
+        );
+
+        if (!r.ok) { showToast("Erro ao acessar base: " + r.status, "error"); break; }
+        const lote = await r.json();
+        if (!Array.isArray(lote) || lote.length === 0) { continuar = false; break; }
+
+        const regs = lote.map(row => {
+          const d = row.dados || {};
+          const cpf = (d.CPF || "").replace(/\D/g, "");
+          if (!cpf || cpf.length < 11) return null;
+          const mStr = (d.MARGEM || d["MARGEM DISPONIVEL"] || d.MARGEM_DISPONIVEL || "0").toString().replace(",",".");
+          const margem = parseFloat(mStr) || 0;
+          const tel1 = (d["TELEFONE 1"] || d.TELEFONE1 || d.TELEFONE || "").replace(/\D/g, "");
+          const tel2 = (d["TELEFONE 2"] || d.TELEFONE2 || "").replace(/\D/g, "");
+          const cl = classifMargem(margem);
+          return {
+            cpf, nome: d.NOME||null, nb: d.BENEFICIO||d.NB||null,
+            especie: d.ESPECIE||null, convenio: d.CONVENIO||d["ORGAO PAGADOR"]||null,
+            orgao: d.ORGAO||null, situacao: d.SITUACAO||"ativo",
+            margem_disponivel: margem, temperatura: cl.temp,
+            telefone1: tel1||null, telefone2: tel2||null,
+            dd1: tel1?tel1.substring(0,2):null, dd2: tel2?tel2.substring(0,2):null,
+            email: d.EMAIL||null,
+            data_nasc: d["DATA NASC"]||d.DATA_NASC||null,
+            bairro: d.BAIRRO||null, cidade: d.CIDADE||d.MUNICIPIO||null,
+            estado: d.ESTADO||d.UF||"BA",
+            cep: (d.CEP||"").replace(/\D/g,"")||null,
+            etapa_higienizacao: "importado", lote_importacao: "base_principal_sb2",
+          };
+        }).filter(Boolean);
+
+        for (let i = 0; i < regs.length; i += 100) {
+          await sbPost(SB1, "beneficiarios", regs.slice(i, i + 100));
+        }
+        totalImportado += regs.length;
+        paginaAtual++;
+        if (lote.length < POR_VEZ) continuar = false;
+      }
+
+      const temMais = continuar && paginaAtual >= pagina + MAX_PAGINAS;
+      setNexPagBase(paginaAtual);
+      setProgressoBase({ etapa: temMais ? `✅ ${fmtNum(totalImportado)} importados nesta rodada!` : `✅ Importação concluída! ${fmtNum(totalImportado)} registros.`, pct: 100, total: 337897, importados: totalImportado, temMais });
+      showToast(`${fmtNum(totalImportado)} registros importados!`);
+      await sbPost(SB1, "lotes_importacao", { nome:`Base Principal — Página ${pagina}–${paginaAtual}`, arquivo:"base_servidores", total_registros:totalImportado, validos:totalImportado, invalidos:0, duplicados:0, etapa:"importado", status:"concluido" });
+      carregarLotes(); pesquisarBeneficiarios();
+    } catch(e) { showToast("Erro: "+e.message,"error"); console.error(e); }
+    setImportandoBase(false);
+  };
 
   const carregarFiltrosSalvos = useCallback(async()=>{
     const data = await sbGet(SB1,"filtros_salvos","select=*&order=created_at.desc");
@@ -729,23 +799,72 @@ export default function BravoCRM() {
 
           {/* ════ IMPORTAÇÕES ════ */}
           {tela==="importar"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Card>
-              <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>📥 Importar Planilha</div>
-              <div style={{fontSize:11,color:MUTED,marginBottom:16}}>CSV ou Excel · Mapeamento automático de colunas</div>
-              <div onClick={()=>fileRef.current.click()} style={{border:`2px dashed ${BORDER}`,borderRadius:10,padding:"36px 20px",textAlign:"center",cursor:"pointer",background:BG,marginBottom:16}}>
-                <div style={{fontSize:36,marginBottom:8}}>📁</div>
-                <div style={{fontSize:13,fontWeight:700}}>Clique para selecionar</div>
-                <div style={{fontSize:11,color:MUTED,marginTop:3}}>CSV ou Excel</div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+              {/* BOTÃO BASE PRINCIPAL */}
+              <div style={{background:`linear-gradient(135deg,${NAVY},#1e3a6e)`,borderRadius:14,padding:22,color:WHITE}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                  <div style={{width:44,height:44,background:"rgba(255,255,255,0.15)",borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🗄️</div>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:800}}>Base Principal</div>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>337.897 beneficiários INSS/GOV BA</div>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+                  {[{l:"Total",v:"337.897"},{l:"INSS",v:"~239K"},{l:"GOV BA",v:"~98K"}].map((k,i)=>(
+                    <div key={i} style={{background:"rgba(255,255,255,0.08)",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+                      <div style={{fontSize:13,fontWeight:900,color:ORANGE}}>{k.v}</div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,0.4)",marginTop:1}}>{k.l}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Progresso */}
+                {progressoBase && (
+                  <div style={{background:"rgba(255,255,255,0.1)",borderRadius:9,padding:12,marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                      <span style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>{progressoBase.etapa}</span>
+                      <span style={{fontSize:11,fontWeight:700,color:ORANGE}}>{progressoBase.pct}%</span>
+                    </div>
+                    <div style={{height:6,background:"rgba(255,255,255,0.15)",borderRadius:3}}>
+                      <div style={{height:"100%",width:`${progressoBase.pct}%`,background:ORANGE,borderRadius:3,transition:"width 0.4s"}}/>
+                    </div>
+                    {progressoBase.importados > 0 && (
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:4}}>{fmtNum(progressoBase.importados)} importados de {fmtNum(progressoBase.total)}</div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>importarDaBasePrincipal(progressoBase?.temMais ? nexPagBase : 0)} disabled={importandoBase}
+                    style={{flex:1,padding:"11px",background:importandoBase?`rgba(255,255,255,0.1)`:ORANGE,border:"none",borderRadius:9,color:WHITE,fontSize:13,fontWeight:700,cursor:importandoBase?"wait":"pointer"}}>
+                    {importandoBase ? "⏳ Importando..." : progressoBase?.temMais ? `▶ Continuar (pág. ${nexPagBase})` : "▶ Importar Base Principal"}
+                  </button>
+                  {progressoBase && !importandoBase && (
+                    <button onClick={()=>setProgressoBase(null)} style={{padding:"11px 14px",background:"rgba(255,255,255,0.1)",border:"none",borderRadius:9,color:WHITE,fontSize:12,cursor:"pointer"}}>✕</button>
+                  )}
+                </div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:8,textAlign:"center"}}>Importa 5.000 registros por rodada · Sem duplicatas</div>
               </div>
-              {progresso&&<div style={{background:"#eff6ff",borderRadius:9,padding:14,marginBottom:14,border:"1px solid #93c5fd"}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:12,color:"#3b82f6",fontWeight:600}}>{progresso.etapa}</span><span style={{fontSize:12,fontWeight:700,color:"#3b82f6"}}>{progresso.pct}%</span></div>
-                <div style={{height:7,background:"#dbeafe",borderRadius:4}}><div style={{height:"100%",width:`${progresso.pct}%`,background:"#3b82f6",borderRadius:4,transition:"width 0.3s"}}/></div>
-              </div>}
-              <div style={{fontSize:11,fontWeight:700,marginBottom:7}}>🗂️ Colunas Reconhecidas</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                {["cpf","nome","sexo","nb","especie","convenio","orgao","situacao","margem","telefone1","telefone2","email","logradouro","bairro","cidade","estado","cep","data_nasc"].map(c=><span key={c} style={{background:"#f0fdf4",color:"#16a34a",padding:"2px 7px",borderRadius:4,fontSize:9,fontWeight:600,border:"1px solid #86efac"}}>{c}</span>)}
-              </div>
-            </Card>
+
+              {/* Upload CSV */}
+              <Card>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>📥 Importar Planilha CSV</div>
+                <div style={{fontSize:11,color:MUTED,marginBottom:14}}>Ou importe seu próprio arquivo CSV/Excel</div>
+                <div onClick={()=>fileRef.current.click()} style={{border:`2px dashed ${BORDER}`,borderRadius:10,padding:"24px 20px",textAlign:"center",cursor:"pointer",background:BG,marginBottom:12}}>
+                  <div style={{fontSize:30,marginBottom:6}}>📁</div>
+                  <div style={{fontSize:12,fontWeight:700}}>Clique para selecionar</div>
+                  <div style={{fontSize:10,color:MUTED,marginTop:2}}>CSV ou Excel</div>
+                </div>
+                {progresso&&<div style={{background:"#eff6ff",borderRadius:9,padding:12,marginBottom:12,border:"1px solid #93c5fd"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:11,color:"#3b82f6",fontWeight:600}}>{progresso.etapa}</span><span style={{fontSize:11,fontWeight:700,color:"#3b82f6"}}>{progresso.pct}%</span></div>
+                  <div style={{height:6,background:"#dbeafe",borderRadius:3}}><div style={{height:"100%",width:`${progresso.pct}%`,background:"#3b82f6",borderRadius:3,transition:"width 0.3s"}}/></div>
+                </div>}
+                <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+                  {["cpf","nome","sexo","nb","convenio","margem","telefone1","telefone2","email","cidade","estado"].map(c=><span key={c} style={{background:"#f0fdf4",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontSize:9,fontWeight:600,border:"1px solid #86efac"}}>{c}</span>)}
+                </div>
+              </Card>
+            </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <Card>
                 <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>🔄 Etapas de Higienização</div>
