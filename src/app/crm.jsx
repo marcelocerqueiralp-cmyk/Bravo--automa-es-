@@ -276,28 +276,99 @@ export default function BravoCRM() {
 
   const pesquisarBeneficiarios = useCallback(async()=>{
     setLoading(true);
-    let q = "select=*&order=margem_disponivel.desc&limit=300";
-    const c=[];
-    if(filtros.nome)        c.push(`nome=ilike.*${filtros.nome}*`);
-    if(filtros.sexo)        c.push(`sexo=eq.${filtros.sexo}`);
-    if(filtros.convenio)    c.push(`convenio=ilike.*${filtros.convenio}*`);
-    if(filtros.orgao)       c.push(`orgao=ilike.*${filtros.orgao}*`);
-    if(filtros.situacao)    c.push(`situacao=eq.${filtros.situacao}`);
-    if(filtros.temperatura) c.push(`temperatura=eq.${filtros.temperatura}`);
-    if(filtros.cidade)      c.push(`cidade=ilike.*${filtros.cidade}*`);
-    if(filtros.estado)      c.push(`estado=eq.${filtros.estado}`);
-    if(filtros.bairro)      c.push(`bairro=ilike.*${filtros.bairro}*`);
-    if(filtros.dd)          c.push(`or=(dd1=eq.${filtros.dd},dd2=eq.${filtros.dd})`);
-    if(filtros.etapaHig)    c.push(`etapa_higienizacao=eq.${filtros.etapaHig}`);
-    if(filtros.temTelefone==="sim") c.push(`telefone1=not.is.null`);
-    if(filtros.temTelefone==="nao") c.push(`telefone1=is.null`);
-    if(filtros.margemMin!=="") c.push(`margem_disponivel=gte.${filtros.margemMin}`);
-    if(filtros.margemMax!=="") c.push(`margem_disponivel=lte.${filtros.margemMax}`);
-    if(c.length) q += "&"+c.join("&");
-    const data = await sbGet(SB1,"beneficiarios",q);
-    const lista = Array.isArray(data)?data:[];
-    setBeneficiarios(lista);
-    setTotalBen(lista.length);
+    try {
+      // ── Filtros para SB1 (importações locais com campos estruturados) ──
+      const c=[];
+      if(filtros.nome)        c.push(`nome=ilike.*${filtros.nome}*`);
+      if(filtros.sexo)        c.push(`sexo=eq.${filtros.sexo}`);
+      if(filtros.convenio)    c.push(`convenio=ilike.*${filtros.convenio}*`);
+      if(filtros.orgao)       c.push(`orgao=ilike.*${filtros.orgao}*`);
+      if(filtros.situacao)    c.push(`situacao=eq.${filtros.situacao}`);
+      if(filtros.temperatura) c.push(`temperatura=eq.${filtros.temperatura}`);
+      if(filtros.cidade)      c.push(`cidade=ilike.*${filtros.cidade}*`);
+      if(filtros.estado)      c.push(`estado=eq.${filtros.estado}`);
+      if(filtros.bairro)      c.push(`bairro=ilike.*${filtros.bairro}*`);
+      if(filtros.dd)          c.push(`or=(dd1=eq.${filtros.dd},dd2=eq.${filtros.dd})`);
+      if(filtros.etapaHig)    c.push(`etapa_higienizacao=eq.${filtros.etapaHig}`);
+      if(filtros.temTelefone==="sim") c.push(`telefone1=not.is.null`);
+      if(filtros.temTelefone==="nao") c.push(`telefone1=is.null`);
+      if(filtros.margemMin!=="") c.push(`margem_disponivel=gte.${filtros.margemMin}`);
+      if(filtros.margemMax!=="") c.push(`margem_disponivel=lte.${filtros.margemMax}`);
+      let qSB1 = "select=*&order=margem_disponivel.desc&limit=200";
+      if(c.length) qSB1 += "&"+c.join("&");
+
+      // ── Filtros para SB2 (337.897 beneficiários — dados JSON) ──
+      // base_servidores tem campo "dados" JSON com: CPF, NOME, BENEFICIO, TELEFONE 1/2/3, MARGEM
+      const cSB2=[];
+      if(filtros.nome) cSB2.push(`dados->>NOME=ilike.*${filtros.nome}*`);
+      if(filtros.temTelefone==="sim") cSB2.push(`dados->>'TELEFONE 1'=not.is.null`);
+      let qSB2 = `select=id,dados&limit=300&order=id.asc`;
+      if(cSB2.length) qSB2 += "&"+cSB2.join("&");
+
+      const [dataSB1, dataSB2] = await Promise.all([
+        sbGet(SB1, "beneficiarios", qSB1),
+        sbGet(SB2, "base_servidores", qSB2),
+      ]);
+
+      // Processar SB2 — extrair campos do JSON
+      const listaSB2 = (Array.isArray(dataSB2)?dataSB2:[]).map(r => {
+        const d = r.dados || {};
+        const cpf = (d.CPF||"").replace(/\D/g,"");
+        const margem = parseFloat((d.MARGEM||d["MARGEM DISPONIVEL"]||d.MARGEM_DISPONIVEL||"0").toString().replace(",",".")) || 0;
+        const tel1 = (d["TELEFONE 1"]||d.TELEFONE1||d.TELEFONE||"").replace(/\D/g,"");
+        const tel2 = (d["TELEFONE 2"]||d.TELEFONE2||"").replace(/\D/g,"");
+        const cl = classifMargem(margem);
+        return {
+          id: r.id,
+          cpf,
+          nome: d.NOME||"",
+          beneficio: d.BENEFICIO||d.NB||"",
+          telefone1: tel1||null,
+          telefone2: tel2||null,
+          dd1: tel1?tel1.substring(0,2):null,
+          dd2: tel2?tel2.substring(0,2):null,
+          email: d.EMAIL||null,
+          data_nasc: d["DATA NASC"]||d.DATA_NASC||null,
+          margem_disponivel: margem,
+          temperatura: cl.temp,
+          etapa_higienizacao: "importado",
+          convenio: d.CONVENIO||d["ORGAO PAGADOR"]||null,
+          cidade: d.CIDADE||null,
+          estado: d.ESTADO||"BA",
+          fonte: "base_principal",
+        };
+      }).filter(r => r.cpf); // remover sem CPF
+
+      // Aplicar filtros locais no SB2
+      const listaSB2Filt = listaSB2.filter(r => {
+        if(filtros.margemMin!=="" && r.margem_disponivel < parseFloat(filtros.margemMin)) return false;
+        if(filtros.margemMax!=="" && r.margem_disponivel > parseFloat(filtros.margemMax)) return false;
+        if(filtros.temperatura && r.temperatura !== filtros.temperatura) return false;
+        if(filtros.dd && r.dd1 !== filtros.dd && r.dd2 !== filtros.dd) return false;
+        if(filtros.temTelefone==="sim" && !r.telefone1) return false;
+        if(filtros.temTelefone==="nao" && r.telefone1) return false;
+        if(filtros.convenio && !(r.convenio||"").toLowerCase().includes(filtros.convenio.toLowerCase())) return false;
+        if(filtros.cidade && !(r.cidade||"").toLowerCase().includes(filtros.cidade.toLowerCase())) return false;
+        return true;
+      });
+
+      const listaSB1 = Array.isArray(dataSB1)?dataSB1:[];
+
+      // Combinar — SB2 primeiro, depois SB1 sem duplicatas
+      const cpfsSB2 = new Set(listaSB2Filt.map(r=>r.cpf));
+      const sb1Unico = listaSB1.filter(r=>!cpfsSB2.has(r.cpf));
+      const lista = [...listaSB2Filt, ...sb1Unico];
+
+      setBeneficiarios(lista);
+      setTotalBen(lista.length);
+    } catch(e) {
+      console.error("Erro ao pesquisar:",e);
+      // Fallback: tentar só SB1
+      const data = await sbGet(SB1,"beneficiarios","select=*&order=margem_disponivel.desc&limit=200");
+      const lista = Array.isArray(data)?data:[];
+      setBeneficiarios(lista);
+      setTotalBen(lista.length);
+    }
     setLoading(false);
   },[filtros]);
 
@@ -541,7 +612,7 @@ export default function BravoCRM() {
 
         <div style={{margin:10,background:"rgba(255,255,255,0.07)",borderRadius:9,padding:"10px 12px"}}>
           <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",letterSpacing:"1px",marginBottom:3}}>BASE TOTAL</div>
-          <div style={{fontSize:20,fontWeight:900,color:ORANGE}}>{fmtNum(totalBen||beneficiarios.length)}</div>
+          <div style={{fontSize:20,fontWeight:900,color:ORANGE}}>337.897</div>
           <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",marginTop:1}}>beneficiários · {fmtNum(funilAtivo)} no funil</div>
         </div>
       </div>
