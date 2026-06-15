@@ -1,4 +1,5 @@
 "use client";
+import Papa from "papaparse";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
