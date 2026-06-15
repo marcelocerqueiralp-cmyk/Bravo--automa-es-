@@ -218,6 +218,207 @@ const Modal = ({title,children,onClose,width=480}) => (
 // ═══════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════
+
+// ══ Componente Higienização Safra ══════════════════════════════
+function HigienizacaoSafra({ supaUrl, supaKey }) {
+  const LOTE = 2000;
+  const H = { "apikey": supaKey, "Authorization": `Bearer ${supaKey}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+  const [st, setSt] = React.useState(null);
+  const [lotes, setLotes] = React.useState([]);
+  const [load, setLoad] = React.useState(true);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [exp, setExp] = React.useState(null);
+  const [cExp, setCExp] = React.useState([]);
+  const [todos, setTodos] = React.useState([]);
+  const [fprod, setFprod] = React.useState("todos");
+  const [busca, setBusca] = React.useState("");
+  const [aba, setAba] = React.useState("lotes");
+  const fRef = React.useRef();
+  const lRef = React.useRef();
+
+  const g = async (p) => { const r=await fetch(`${supaUrl}/rest/v1/${p}`,{headers:H}); if(!r.ok) throw new Error(await r.text()); return r.json(); };
+  const po = async (p,b) => { const r=await fetch(`${supaUrl}/rest/v1/${p}`,{method:"POST",headers:H,body:JSON.stringify(b)}); if(!r.ok) throw new Error(await r.text()); const t=await r.text(); return t?JSON.parse(t):null; };
+  const pa = async (p,b) => { const r=await fetch(`${supaUrl}/rest/v1/${p}`,{method:"PATCH",headers:{...H,"Prefer":"return=minimal"},body:JSON.stringify(b)}); if(!r.ok) throw new Error(await r.text()); };
+  const csv_ = (rs) => "\uFEFF"+["nome;cpf;matricula;renda;nascimento",...rs.map(r=>`"${(r.nome||"").replace(/"/g,'""')}";${r.cpf};"${r.nb||""}";;"${r.data_nasc||""}"`)].join("\n");
+  const dl_ = (c,n) => { const b=new Blob([c],{type:"text/csv;charset=utf-8;"}); const u=URL.createObjectURL(b); const a=document.createElement("a"); a.href=u; a.download=n; a.click(); URL.revokeObjectURL(u); };
+  const mo = (v) => v!=null&&!isNaN(v)?`R$ ${parseFloat(v).toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—";
+  const pc = (p) => p==="NOVO"?"#4ade80":p==="REFIN"?"#a78bfa":"#fbbf24";
+
+  const carregar = React.useCallback(async()=>{
+    setLoad(true); setErr("");
+    try {
+      const all=await g("beneficiarios?select=hig_safra_status&status=eq.ativo");
+      setSt({total:all.length,pendentes:all.filter(r=>r.hig_safra_status==="pendente").length,higienizados:all.filter(r=>r.hig_safra_status==="higienizado").length,nao_encontrados:all.filter(r=>r.hig_safra_status==="nao_encontrado").length});
+      setLotes(await g("hig_lotes?select=*&order=numero.asc")||[]);
+    } catch(e){setErr("Erro: "+e.message);}
+    setLoad(false);
+  },[supaUrl,supaKey]);
+
+  React.useEffect(()=>{carregar();},[carregar]);
+
+  const gerarLote = async()=>{
+    setErr(""); setMsg("Buscando CPFs...");
+    try {
+      const rs=await g(`beneficiarios?select=id,cpf,nome,nb,data_nasc&hig_safra_status=eq.pendente&status=eq.ativo&order=created_at.asc&limit=${LOTE}`);
+      if(!rs?.length){setMsg("Todos higienizados!");return;}
+      const num=lotes.length+1;
+      await po("hig_lotes",{numero:num,total_cpfs:rs.length,status:"baixado",arquivo_enviado:`Lote${num}.csv`});
+      dl_(csv_(rs),`Higienizacao_Safra_GovBA_Lote${String(num).padStart(3,"0")}.csv`);
+      setMsg(`Lote ${num} — ${rs.length} CPFs baixados! Envie ao LEV e importe o resultado.`);
+      carregar();
+    }catch(e){setErr("Erro: "+e.message);setMsg("");}
+  };
+
+  const proc = async(file)=>{
+    const lote=lRef.current; if(!lote) return;
+    setErr(""); setMsg("Lendo arquivo...");
+    try {
+      await new Promise((res,rej)=>{
+        Papa.parse(file,{header:true,skipEmptyLines:true,delimiter:"",
+          complete:async(r)=>{
+            try{
+              const pc_={};
+              r.data.forEach(row=>{const cpf=(row.cpf||"").replace(/\D/g,""); if(cpf){if(!pc_[cpf])pc_[cpf]=[];pc_[cpf].push(row);}});
+              const cpfs=Object.keys(pc_); let hig=0,nao=0,tc=0;
+              for(let i=0;i<cpfs.length;i++){
+                const cpf=cpfs[i],com=pc_[cpf].filter(l=>l.id_contrato);
+                if(com.length){
+                  hig++;tc+=com.length;
+                  await pa(`beneficiarios?cpf=eq.${cpf}`,{hig_safra_status:"higienizado",hig_safra_lote:lote.numero,hig_safra_data:new Date().toISOString(),hig_safra_contratos:com.length,updated_at:new Date().toISOString()});
+                  for(const l of com) await po("hig_contratos_safra",{lote_id:lote.id,cpf,nome:l.nome||"",matricula:l.matricula||"",id_contrato:l.id_contrato||"",ds_produto:l.ds_produto||"",valor_principal:parseFloat(l.valor_principal)||null,valor_parcela:parseFloat(l.valor_parcela)||null,prazo:parseInt(l.prazo)||null,parcelas_pagas:parseInt(l.parcelas_pagas)||null,parcelas_restantes:parseInt(l.parcelas_restantes)||null,proximo_vencimento:l.proximo_vencimento||null,fl_solicitacao_portabilidade:l.fl_solicitacao_portabilidade||"",mensagem_erro:l.mensagem_erro||"",critica_01:l.critica_01||"",data_consultado:new Date().toISOString()});
+                }else{
+                  nao++;
+                  await pa(`beneficiarios?cpf=eq.${cpf}`,{hig_safra_status:"nao_encontrado",hig_safra_lote:lote.numero,hig_safra_data:new Date().toISOString(),hig_safra_contratos:0,updated_at:new Date().toISOString()});
+                }
+                if(i%20===0)setMsg(`Salvando ${i+1}/${cpfs.length}...`);
+              }
+              await pa(`hig_lotes?id=eq.${lote.id}`,{status:"concluido",arquivo_resultado:file.name,cpfs_higienizados:hig,cpfs_nao_encontrados:nao,total_contratos:tc,updated_at:new Date().toISOString()});
+              setMsg(`Lote ${lote.numero} concluido! ${hig} higienizados, ${tc} contratos.`);
+              carregar();res();
+            }catch(e){rej(e);}
+          },error:rej
+        });
+      });
+    }catch(e){setErr("Erro: "+e.message);setMsg("");}
+  };
+
+  React.useEffect(()=>{
+    if(aba==="contratos"){
+      const f=fprod!=="todos"?`&ds_produto=eq.${fprod}`:"";
+      g(`hig_contratos_safra?select=*${f}&order=created_at.desc&limit=500`).then(d=>setTodos(d||[])).catch(()=>{});
+    }
+  },[aba,fprod,supaUrl,supaKey]);
+
+  const dias=st?Math.ceil(st.pendentes/LOTE):0;
+  const filt=todos.filter(c=>!busca||c.cpf?.includes(busca)||c.nome?.toLowerCase().includes(busca.toLowerCase()));
+  const TH={background:"#0a0a1a",color:"#7c3aed",fontSize:11,fontWeight:700,padding:"7px 10px",textAlign:"left",borderBottom:"1px solid #1a1a30"};
+  const TD={padding:"6px 10px",borderBottom:"1px solid #0f0f20",fontSize:12,color:"#cbd5e1"};
+
+  if(load) return <div style={{textAlign:"center",padding:40,color:"#7c3aed"}}>Carregando...</div>;
+  if(!st) return <div style={{padding:20,color:"#f87171"}}>{err||"Erro"}</div>;
+
+  return <div style={{background:"#07070f",minHeight:400,padding:4}}>
+    <div style={{background:"#0c0c1e",border:"1px solid #1a1a30",borderRadius:12,padding:18,marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:10}}>
+        <div>
+          <div style={{fontSize:11,color:"#475569"}}>Banco Safra · Refinanciamento · Gov. Bahia</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#fff"}}>{st.total.toLocaleString("pt-BR")} CPFs · {lotes.length} lotes</div>
+        </div>
+        {st.pendentes>0
+          ?<button onClick={gerarLote} style={{background:"linear-gradient(135deg,#6d28d9,#9333ea)",border:"none",borderRadius:8,padding:"9px 18px",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:600}}>Gerar Lote do Dia</button>
+          :<span style={{background:"#16a34a22",border:"1px solid #16a34a",color:"#4ade80",borderRadius:5,padding:"4px 10px",fontSize:12}}>Carteira completa!</span>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+        {[{l:"Higienizados",v:st.higienizados,c:"#4ade80"},{l:"Não encontr.",v:st.nao_encontrados,c:"#f87171"},{l:"Pendentes",v:st.pendentes,c:"#fbbf24"},{l:"Dias rest.",v:dias,c:"#a78bfa"}].map(({l,v,c})=>
+          <div key={l} style={{background:"#0f0f1e",borderRadius:10,padding:"12px 10px",border:`1px solid ${c}22`}}>
+            <div style={{fontSize:18,fontWeight:800,color:c}}>{v.toLocaleString("pt-BR")}</div>
+            <div style={{fontSize:10,color:"#475569"}}>{l}</div>
+          </div>
+        )}
+      </div>
+    </div>
+    {msg&&<div style={{background:"#16a34a11",border:"1px solid #16a34a",borderRadius:10,padding:12,color:"#4ade80",fontSize:13,marginBottom:12}}>{msg}</div>}
+    {err&&<div style={{background:"#ef444411",border:"1px solid #ef4444",borderRadius:10,padding:12,color:"#f87171",fontSize:13,marginBottom:12}}>{err}</div>}
+    <div style={{display:"flex",gap:4,marginBottom:14}}>
+      {[["lotes","Lotes"],["contratos","Contratos"]].map(([id,lb])=>
+        <button key={id} onClick={()=>setAba(id)} style={{background:aba===id?"linear-gradient(135deg,#6d28d9,#9333ea)":"#0c0c1e",border:aba===id?"none":"1px solid #1a1a30",borderRadius:8,padding:"8px 16px",color:aba===id?"#fff":"#94a3b8",cursor:"pointer",fontSize:13,fontWeight:aba===id?700:400}}>{lb}</button>
+      )}
+    </div>
+    {aba==="lotes"&&<div>
+      {lotes.length===0
+        ?<div style={{background:"#0c0c1e",border:"1px solid #1a1a30",borderRadius:12,padding:"40px 20px",textAlign:"center",color:"#475569",fontSize:13}}>Clique em Gerar Lote do Dia para comecar.</div>
+        :lotes.map(lote=>{
+          const ab=exp===lote.id;
+          return <div key={lote.id} style={{background:lote.status==="concluido"?"#0c1a12":"#0c0c1e",border:`1px solid ${lote.status==="concluido"?"#166534":"#1a1a30"}`,borderRadius:12,marginBottom:10,overflow:"hidden"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:14,flexWrap:"wrap"}}>
+              <div style={{width:38,height:38,borderRadius:9,background:lote.status==="concluido"?"#16a34a22":lote.status==="baixado"?"#d9770622":"#6d28d922",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                {lote.status==="concluido"?"✅":lote.status==="baixado"?"⏳":"📄"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
+                  <span style={{fontSize:14,fontWeight:700,color:"#fff"}}>Lote {String(lote.numero).padStart(3,"0")}</span>
+                  <span style={{background:lote.status==="concluido"?"#16a34a22":lote.status==="baixado"?"#d9770622":"#33334422",border:`1px solid ${lote.status==="concluido"?"#16a34a":lote.status==="baixado"?"#d97706":"#444466"}`,color:lote.status==="concluido"?"#4ade80":lote.status==="baixado"?"#fbbf24":"#94a3b8",borderRadius:5,padding:"2px 8px",fontSize:11,fontWeight:600}}>
+                    {lote.status==="concluido"?"Concluído":lote.status==="baixado"?"Aguardando resultado":"Pendente"}
+                  </span>
+                </div>
+                <div style={{fontSize:12,color:"#475569"}}>{lote.total_cpfs?.toLocaleString("pt-BR")} CPFs{lote.status==="concluido"?` · ${lote.cpfs_higienizados} hig. · ${lote.total_contratos} contratos`:""}</div>
+              </div>
+              <div style={{display:"flex",gap:8,flexShrink:0}}>
+                {lote.status==="baixado"&&<button onClick={()=>{lRef.current=lote;fRef.current?.click();}} style={{background:"linear-gradient(135deg,#15803d,#16a34a)",border:"none",borderRadius:8,padding:"8px 14px",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:600}}>Importar Resultado</button>}
+                {lote.status==="concluido"&&<button onClick={async()=>{if(ab){setExp(null);setCExp([]);}else{setExp(lote.id);const cs=await g(`hig_contratos_safra?lote_id=eq.${lote.id}&select=*&order=cpf.asc&limit=50`);setCExp(cs||[]);}}} style={{background:"none",border:"1px solid #2d2d45",borderRadius:8,padding:"7px 14px",color:"#94a3b8",cursor:"pointer",fontSize:12}}>{ab?"▲ Fechar":"▼ Ver"}</button>}
+              </div>
+            </div>
+            {lote.status==="baixado"&&<div style={{margin:"0 14px 14px",fontSize:12,color:"#d97706",background:"#d9770611",border:"1px solid #d9770633",borderRadius:8,padding:"10px 12px"}}>
+              LEV Negocios → Higienizacao → Solicitar → Safra → Refinanciamento → Convenio: 10237 - GOV BA → CSV → aguarde → Download → Importar Resultado
+            </div>}
+            {ab&&cExp.length>0&&<div style={{borderTop:"1px solid #1a1a30",padding:14,overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead><tr>{["CPF","Nome","Produto","Vl. Parcela","Parc. Rest.","Portab."].map(c=><th key={c} style={TH}>{c}</th>)}</tr></thead>
+                <tbody>{cExp.map((c,i)=><tr key={i} style={{background:i%2===0?"#09091a":"#0c0c1e"}}>
+                  <td style={TD}>{c.cpf}</td>
+                  <td style={{...TD,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nome}</td>
+                  <td style={{...TD,color:pc(c.ds_produto),fontWeight:600}}>{c.ds_produto||"—"}</td>
+                  <td style={TD}>{mo(c.valor_parcela)}</td>
+                  <td style={TD}>{c.parcelas_restantes??"—"}</td>
+                  <td style={{...TD,color:c.fl_solicitacao_portabilidade==="S"?"#4ade80":"#475569"}}>{c.fl_solicitacao_portabilidade==="S"?"SIM":"NÃO"}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>}
+          </div>;
+        })
+      }
+    </div>}
+    {aba==="contratos"&&<div>
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar CPF ou nome..." style={{flex:1,minWidth:180,background:"#0c0c1e",border:"1px solid #1a1a30",borderRadius:8,padding:"8px 12px",color:"#e2e8f0",fontSize:13,outline:"none"}}/>
+        {["todos","NOVO","REFIN","PORTABILIDADE"].map(f=><button key={f} onClick={()=>setFprod(f)} style={{background:fprod===f?"linear-gradient(135deg,#6d28d9,#9333ea)":"#0c0c1e",border:fprod===f?"none":"1px solid #1a1a30",borderRadius:8,padding:"8px 12px",color:fprod===f?"#fff":"#94a3b8",cursor:"pointer",fontSize:12}}>{f==="todos"?"Todos":f}</button>)}
+      </div>
+      {filt.length===0
+        ?<div style={{background:"#0c0c1e",border:"1px solid #1a1a30",borderRadius:12,padding:"40px 20px",textAlign:"center",color:"#475569"}}>Nenhum contrato ainda.</div>
+        :<div style={{overflowX:"auto"}}>
+          <div style={{fontSize:12,color:"#475569",marginBottom:8}}>{filt.length} contratos</div>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead><tr>{["CPF","Nome","Produto","Vl. Principal","Vl. Parcela","Parc. Rest.","Portab.","Consulta"].map(c=><th key={c} style={TH}>{c}</th>)}</tr></thead>
+            <tbody>{filt.map((c,i)=><tr key={i} style={{background:i%2===0?"#09091a":"#0c0c1e"}}>
+              <td style={TD}>{c.cpf}</td>
+              <td style={{...TD,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nome}</td>
+              <td style={{...TD,color:pc(c.ds_produto),fontWeight:600}}>{c.ds_produto||"—"}</td>
+              <td style={TD}>{mo(c.valor_principal)}</td>
+              <td style={TD}>{mo(c.valor_parcela)}</td>
+              <td style={TD}>{c.parcelas_restantes??"—"}</td>
+              <td style={{...TD,color:c.fl_solicitacao_portabilidade==="S"?"#4ade80":"#475569"}}>{c.fl_solicitacao_portabilidade==="S"?"SIM":"NÃO"}</td>
+              <td style={{...TD,color:"#475569"}}>{(c.data_consultado||"").slice(0,10)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      }
+    </div>}
+    <input ref={fRef} type="file" accept=".csv,.xlsx" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0]){proc(e.target.files[0]);e.target.value='';}}}/>
+  </div>;
+}
+// ══ Fim HigienizacaoSafra ═══════════════════════════════════════
+
 export default function BravoCRM() {
   const [tela, setTela]                 = useState("dashboard");
   const [contatos, setContatos]         = useState([]);
@@ -542,7 +743,7 @@ export default function BravoCRM() {
   // ── NAV ──
   const navGroups = [
     { group:"DASHBOARDS", items:[{ id:"dashboard",icon:"⌂",label:"Dashboard" },{ id:"propostas",icon:"📋",label:"Propostas" }] },
-    { group:"BASE", items:[{ id:"pesquisa",icon:"🔍",label:"Pesquisa Avançada" },{ id:"importar",icon:"📥",label:"Importações" },{ id:"higienizacao",icon:"🧹",label:"Higienização" },{ id:"filtros_salvos",icon:"💾",label:"Filtros Salvos" }] },
+    { group:"BASE", items:[{ id:"pesquisa",icon:"🔍",label:"Pesquisa Avançada" },{ id:"importar",icon:"📥",label:"Importações" },{ id:"higienizacao",icon:"🧹",label:"Higienização" },{ id:"hig_safra",icon:"🔄",label:"Higienização Safra" },{ id:"filtros_salvos",icon:"💾",label:"Filtros Salvos" }] },
     { group:"CRM", items:[{ id:"contatos",icon:"👥",label:"Contatos" },{ id:"atendimentos",icon:"📞",label:"Atendimentos" },{ id:"tarefas",icon:"✓",label:"Tarefas" },{ id:"funil",icon:"◈",label:"Funil de Vendas" }] },
     { group:"CONNECT", items:[{ id:"whatsapp",icon:"💬",label:"WhatsApp" },{ id:"sms",icon:"📱",label:"SMS" },{ id:"discadora",icon:"☎️",label:"Discadora" },{ id:"ura",icon:"🎙️",label:"URA Reversa" }] },
     { group:"OPERAÇÕES", items:[{ id:"oportunidades",icon:"💡",label:"Oportunidades" },{ id:"refinanciamento",icon:"🔄",label:"Refinanciamento" },{ id:"campanhas",icon:"📣",label:"Campanhas" },{ id:"ia",icon:"✦",label:"IA Assistente" }] },
@@ -922,6 +1123,10 @@ export default function BravoCRM() {
               })}
             </div>
           </div>}
+
+
+          {/* ════ HIG SAFRA ════ */}
+          {tela==="hig_safra"&&<HigienizacaoSafra supaUrl="https://xhykfdwhxbgyftdxcfor.supabase.co" supaKey="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3lmZHdoeGJneWZ0ZHhjZm9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MDI0NjIsImV4cCI6MjA5NDk3ODQ2Mn0.cjAoee_P7t63kXYQ-5P5_mm9whjA6cdROCyWuWC6pSU" />}
 
           {/* ════ FILTROS SALVOS ════ */}
           {tela==="filtros_salvos"&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
