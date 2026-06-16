@@ -1031,14 +1031,104 @@ export default function CRM() {
     refinanciamento:"Refinanciamento", base:"Base Completa", importar:"Gestão Base"
   };
 
+  // ── SIDEBAR LATERAL FIXA ─────────────────────────────────────
+  const navGroups = [
+    {grupo:"PRINCIPAL", items:[
+      {id:"dashboard", icon:"📊", label:"Dashboard"},
+    ]},
+    {grupo:"CADASTROS", items:[
+      {id:"clientes",        icon:"👥", label:"Clientes"},
+      {id:"oportunidades",   icon:"💡", label:"Margens",         badge:stats.quentes},
+      {id:"refinanciamento", icon:"🔄", label:"Refinanciamento"},
+      {id:"base",            icon:"🗄️",label:"Base Completa"},
+    ]},
+    {grupo:"OPERAÇÕES", items:[
+      {id:"importar", icon:"📥", label:"Gestão Base"},
+    ]},
+    {grupo:"SUPORTE", items:[
+      {id:"_chat",    icon:"💬", label:"Chat Lead"},
+      {id:"_chamados",icon:"🎧", label:"Chamados"},
+    ]},
+  ];
+
+  const Sidebar = () => (
+    <div style={{
+      width:230, background:"#1a2035", height:"100vh",
+      display:"flex", flexDirection:"column", flexShrink:0,
+      position:"sticky", top:0, boxShadow:"2px 0 16px rgba(0,0,0,.2)"
+    }}>
+      {/* Logo */}
+      <div style={{padding:"20px 18px 16px", borderBottom:"1px solid rgba(255,255,255,.07)"}}>
+        <div style={{display:"flex", alignItems:"center", gap:10}}>
+          <div style={{width:40,height:40,background:"linear-gradient(135deg,#5046e5,#818cf8)",
+            borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:20,fontWeight:900,color:"#fff",flexShrink:0}}>C</div>
+          <div>
+            <div style={{color:"#fff",fontWeight:800,fontSize:14}}>ConsigCRM</div>
+            <div style={{color:"rgba(255,255,255,.3)",fontSize:9,textTransform:"uppercase",letterSpacing:"1px"}}>Bravo Consignado</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
+        {navGroups.map(g=>(
+          <div key={g.grupo}>
+            <div style={{padding:"10px 18px 5px",fontSize:9,color:"rgba(255,255,255,.25)",
+              fontWeight:700,textTransform:"uppercase",letterSpacing:"1.4px"}}>{g.grupo}</div>
+            {g.items.map(item=>{
+              const ativo = aba===item.id;
+              return (
+                <div key={item.id}
+                  onClick={()=>{
+                    if(item.id==="importar"){setModalImport(true);}
+                    else if(item.id.startsWith("_")){}
+                    else{setAba(item.id);}
+                  }}
+                  style={{
+                    margin:"2px 10px",padding:"10px 12px",borderRadius:8,
+                    cursor:"pointer",display:"flex",alignItems:"center",gap:10,
+                    background:ativo?"rgba(80,70,229,.25)":"transparent",
+                    borderLeft:ativo?"3px solid #818cf8":"3px solid transparent",
+                    transition:"all .15s"
+                  }}>
+                  <span style={{fontSize:16}}>{item.icon}</span>
+                  <span style={{fontSize:13,fontWeight:ativo?700:400,
+                    color:ativo?"#818cf8":"rgba(255,255,255,.7)",flex:1}}>{item.label}</span>
+                  {item.badge>0&&(
+                    <span style={{background:"#22c55e",color:"#fff",fontSize:10,
+                      fontWeight:800,padding:"2px 7px",borderRadius:99}}>{fmtNum(item.badge)}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+
+      {/* Rodapé sidebar */}
+      <div style={{padding:"14px 18px",borderTop:"1px solid rgba(255,255,255,.07)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:10}}>
+          <div style={{width:7,height:7,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 6px rgba(34,197,94,.8)"}}></div>
+          <span style={{fontSize:10,color:"rgba(255,255,255,.4)"}}>{fmtNum(totalBase)} registros</span>
+        </div>
+        <button onClick={()=>buscar()} style={{
+          width:"100%",padding:"8px",background:"rgba(255,255,255,.06)",
+          border:"1px solid rgba(255,255,255,.1)",borderRadius:8,
+          color:"rgba(255,255,255,.6)",fontSize:11,cursor:"pointer",fontFamily:"inherit"
+        }}>🔄 Atualizar</button>
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{minHeight:"100vh", background:BG2, fontFamily:"'Inter',system-ui,sans-serif", color:DARK}}>
+    <div style={{display:"flex", minHeight:"100vh", fontFamily:"'Inter',system-ui,sans-serif", color:DARK}}>
       {/* Toast */}
       {toast && (
-        <div style={{position:"fixed", top:16, right:16, zIndex:9999,
+        <div style={{position:"fixed",top:16,right:16,zIndex:9999,
           background:toast.tipo==="error"?"#fee2e2":"#dcfce7",
           border:`1px solid ${toast.tipo==="error"?"#fca5a5":"#86efac"}`,
-          borderRadius:10, padding:"11px 18px", fontSize:13, fontWeight:600,
+          borderRadius:10,padding:"11px 18px",fontSize:13,fontWeight:600,
           color:toast.tipo==="error"?"#dc2626":"#16a34a",
           boxShadow:"0 4px 20px rgba(0,0,0,.12)"}}>
           {toast.tipo==="error"?"❌":"✅"} {toast.msg}
@@ -1047,39 +1137,51 @@ export default function CRM() {
 
       {clienteSel && <ModalCliente c={clienteSel} onClose={()=>setClienteSel(null)}/>}
       {modalImport && <ModalImport onClose={()=>setModalImport(false)} onDone={()=>{setModalImport(false);buscar();showToast("Base importada com sucesso!");}}/>}
-      {menuAberto && <MenuDrawer aba={aba} setAba={v=>{setAba(v);if(v==="importar"){setModalImport(true);}}} onClose={()=>setMenuAberto(false)} stats={stats}/>}
 
-      {/* TopBar */}
-      <TopBarC
-        onMenu={()=>setMenuAberto(true)}
-        titulo={titulos[aba]||""}
-        acoes={{
-          historico: true,
-          exportacoes: true,
-          onExportar: ()=>setModalImport(true),
-          labelExportar: aba==="clientes"||aba==="base"?"Exportar Clientes":"Importar Base",
-          onAdicionar: ()=>setModalImport(true),
-        }}
-      />
+      {/* SIDEBAR */}
+      <Sidebar/>
 
-      {/* Botão filtros (abas não-dashboard) */}
-      {aba!=="dashboard" && (
-        <div style={{padding:"0 16px 12px", background:BG2}}>
-          <button onClick={()=>setMostrarFiltros(f=>!f)} style={{
-            background:CARD_BG, border:"1px solid #e5e7eb", borderRadius:10,
-            padding:"10px 16px", fontSize:13, fontWeight:600, color:DARK,
-            cursor:"pointer", display:"flex", alignItems:"center", gap:8, fontFamily:"inherit"
-          }}>
-            🔽 {mostrarFiltros?"Ocultar Filtros":"Mostrar Filtros"}
-          </button>
+      {/* ÁREA PRINCIPAL */}
+      <div style={{flex:1, display:"flex", flexDirection:"column", background:BG2, overflow:"hidden"}}>
+
+        {/* Header da página */}
+        <div style={{background:CARD_BG, borderBottom:"1px solid #e5e7eb", padding:"14px 24px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0,
+          boxShadow:"0 1px 4px rgba(0,0,0,.04)"}}>
+          <div>
+            <h1 style={{fontSize:20,fontWeight:900,color:DARK,margin:0}}>{titulos[aba]||"Dashboard"}</h1>
+            <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>{fmtNum(clientes.length)} registros carregados</div>
+          </div>
+          <div style={{display:"flex", gap:8, alignItems:"center"}}>
+            {aba!=="dashboard" && (
+              <button onClick={()=>setMostrarFiltros(f=>!f)} style={{
+                background:mostrarFiltros?"rgba(67,97,238,.1)":"#f3f4f6",
+                border:`1px solid ${mostrarFiltros?"#4361ee":"#e5e7eb"}`,
+                borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:600,
+                color:mostrarFiltros?"#4361ee":DARK, cursor:"pointer", fontFamily:"inherit"
+              }}>🔽 Filtros</button>
+            )}
+            <button onClick={()=>setModalImport(true)} style={{
+              background:GREEN_BTN, border:"none", borderRadius:8, color:"#fff",
+              padding:"8px 16px", fontSize:12, fontWeight:700, cursor:"pointer",
+              display:"flex", alignItems:"center", gap:6, fontFamily:"inherit"
+            }}>📥 Importar Base</button>
+            <button onClick={()=>setModalImport(true)} style={{
+              background:PURPLE_BTN, border:"none", borderRadius:8, color:"#fff",
+              width:36, height:36, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900
+            }}>+</button>
+          </div>
         </div>
-      )}
 
-      {/* Conteúdo */}
-      {aba==="dashboard" && <Dashboard/>}
-      {(aba==="clientes"||aba==="oportunidades"||aba==="refinanciamento"||aba==="base") && (
-        <AbaClientes titulo={titulos[aba]}/>
-      )}
+        {/* Conteúdo com scroll */}
+        <div style={{flex:1, overflowY:"auto"}}>
+          {aba==="dashboard" && <Dashboard/>}
+          {(aba==="clientes"||aba==="oportunidades"||aba==="refinanciamento"||aba==="base") && (
+            <AbaClientes titulo={titulos[aba]}/>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
