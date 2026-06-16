@@ -25,7 +25,12 @@ const sbUpsert = async (sb, table, body) => {
     headers: { apikey: sb.key, Authorization: `Bearer ${sb.key}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify(body)
   });
-  return r.ok ? r.json() : null;
+  if (!r.ok) {
+    const err = await r.text();
+    console.error("sbUpsert erro:", r.status, err);
+    throw new Error(`Supabase erro ${r.status}: ${err}`);
+  }
+  return r.json();
 };
 
 // ═══════════════ BANCOS ═══════════════
@@ -405,14 +410,19 @@ function ModalImport({onClose, onDone}) {
         // Salvar no Supabase em lotes de 300
         setProg({txt:`Salvando ${regs.length} registros...`, pct:50});
         let salvos = 0;
-        for (let i = 0; i < regs.length; i += 300) {
-          await sbUpsert(SB, "beneficiarios", regs.slice(i, i + 300));
-          salvos += Math.min(300, regs.length - i);
-          setProg({txt:`Salvando... ${fmtNum(salvos)}/${fmtNum(regs.length)}`, pct: 50 + Math.round(salvos/regs.length*45)});
+        try {
+          for (let i = 0; i < regs.length; i += 300) {
+            await sbUpsert(SB, "beneficiarios", regs.slice(i, i + 300));
+            salvos += Math.min(300, regs.length - i);
+            setProg({txt:`Salvando... ${fmtNum(salvos)}/${fmtNum(regs.length)}`, pct: 50 + Math.round(salvos/regs.length*45)});
+          }
+          setProg(null);
+          setOk(regs.length);
+          onDone();
+        } catch(e) {
+          setProg(null);
+          alert("Erro ao salvar no banco: " + e.message);
         }
-        setProg(null);
-        setOk(regs.length);
-        onDone();
       },
       error: e => { setProg(null); alert("Erro ao ler arquivo: " + e.message); }
     });
