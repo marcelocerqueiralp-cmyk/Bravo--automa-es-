@@ -213,166 +213,343 @@ function ModalImport({onClose, onDone}) {
   const [arquivo, setArquivo] = useState(null);
   const [prog, setProg] = useState(null);
   const [ok, setOk] = useState(null);
+  const [tipoDetectado, setTipoDetectado] = useState(null); // "safra" | "consiglog" | "generico"
+  const [preview, setPreview] = useState(null);
   const fileRef = useRef();
 
+  // Detectar tipo ao selecionar arquivo
+  const detectarTipo = (file) => {
+    setArquivo(file);
+    setTipoDetectado(null);
+    setPreview(null);
+    Papa.parse(file, {
+      header: true, skipEmptyLines: true, delimiter: ";", preview: 3,
+      complete: (res) => {
+        if (!res.data.length) return;
+        const hdrs = Object.keys(res.data[0]).map(h => h.toLowerCase().trim());
+        let tipo = "generico";
+        let bancoDet = "";
+        // Detectar Safra
+        if (hdrs.includes("id_contrato") || hdrs.includes("ds_produto") || hdrs.includes("simulacao_valor_principal")) {
+          tipo = "safra";
+          bancoDet = "safra";
+        }
+        // Detectar Consiglog (margem)
+        else if (hdrs.includes("margem_disponivel") || hdrs.includes("servidor") || hdrs.includes("lotacao")) {
+          tipo = "consiglog";
+          bancoDet = "";
+        }
+        setTipoDetectado(tipo);
+        if (bancoDet) setBanco(bancoDet);
+        // Preview
+        const total = res.data.length;
+        const comDados = res.data.filter(r => {
+          const cpf = limpar(Object.values(r)[0] || "");
+          const msg = Object.values(r)[7] || "";
+          return cpf.length >= 11 && !msg.toLowerCase().includes("nenhuma");
+        }).length;
+        setPreview({ total, comDados, tipo, bancoDet });
+      }
+    });
+  };
+
   const importar = async () => {
-    if (!arquivo||!banco) return alert("Selecione o banco e o arquivo.");
-    setProg({txt:"Lendo arquivo...",pct:10});
+    if (!arquivo) return alert("Selecione o arquivo.");
+    if (tipoDetectado !== "consiglog" && !banco) return alert("Selecione o banco.");
+    setProg({txt:"Lendo arquivo...", pct:10});
 
     Papa.parse(arquivo, {
-      header:true, skipEmptyLines:true,
+      header: true, skipEmptyLines: true, delimiter: ";",
       complete: async (res) => {
         const rows = res.data;
         if (!rows.length) { setProg(null); return alert("Arquivo vazio."); }
-        setProg({txt:`Processando ${rows.length} registros...`,pct:25});
-
-        const hdrs = Object.keys(rows[0]).map(h=>h.toLowerCase().trim());
-        const col = opts => {
-          const h = hdrs.find(h=>opts.some(o=>h.includes(o)));
-          return h ? Object.keys(rows[0]).find(k=>k.toLowerCase().trim()===h) : null;
-        };
-
-        const colCPF      = col(["cpf"]);
-        const colNome     = col(["nome","servidor","segurado","name"]);
-        const colTel1     = col(["telefone1","tel1","fone1","celular1","telefone"]);
-        const colTel2     = col(["telefone2","tel2","fone2","celular2"]);
-        const colDD       = col(["dd1","ddd","dd"]);
-        const colCidade   = col(["cidade","municipio","city"]);
-        const colEstado   = col(["estado","uf","state"]);
-        const colEnd      = col(["logradouro","endereco","endereço","address"]);
-        const colBairro   = col(["bairro","neighborhood"]);
-        const colCEP      = col(["cep","zip"]);
-        const colMargem   = col(["margem_disponivel","margem","sld_margem","vlr_margem"]);
-        const colNB       = col(["nb","beneficio","matricula","nr_beneficio"]);
-        const colConv     = col(["convenio","conv","orgao"]);
-        const colSit      = col(["situacao","situação","status"]);
-        const colEsp      = col(["especie","espécie"]);
-        const colParcela  = col(["parcela","vlr_parcela","valor_parcela","vl_parcela"]);
-        const colSaldo    = col(["saldo","saldo_devedor","sd","vl_saldo"]);
-        const colPrazo    = col(["prazo","nr_prazo","prazo_total"]);
-        const colPagas    = col(["pagas","parcelas_pagas","qt_pagas","nr_pagas"]);
-        const colContrato = col(["contrato","nr_contrato","id_contrato","num_contrato"]);
-        const colVenc     = col(["vencimento","dt_vencimento","competencia","compet"]);
+        setProg({txt:`Processando ${rows.length} linhas...`, pct:25});
 
         const regs = [];
-        for (const r of rows) {
-          const cpf = limpar(r[colCPF]||"");
-          if (!cpf||cpf.length<11) continue;
-          const margem = parseFloat((r[colMargem]||"0").toString().replace(",","."))||0;
-          const dd = limpar(r[colDD]||"");
-          const tel1raw = limpar(r[colTel1]||"");
-          const tel1 = tel1raw.length>=10 ? tel1raw : dd+tel1raw;
 
-          regs.push({
-            cpf,
-            nome: (r[colNome]||"").trim(),
-            telefone1: tel1.slice(0,11),
-            telefone2: limpar(r[colTel2]||"").slice(0,11)||null,
-            cidade: (r[colCidade]||"").trim(),
-            estado: (r[colEstado]||"").trim(),
-            logradouro: (r[colEnd]||"").trim(),
-            bairro: (r[colBairro]||"").trim(),
-            cep: limpar(r[colCEP]||""),
-            margem_disponivel: margem,
-            nb: (r[colNB]||"").trim(),
-            convenio: (r[colConv]||"").trim(),
-            situacao: (r[colSit]||"").trim(),
-            especie: (r[colEsp]||"").trim(),
-            temperatura: classif(margem).temp,
-            banco_higienizado: banco,
-            [`${banco}_parcela`]: parseFloat((r[colParcela]||"0").toString().replace(",","."))||0,
-            [`${banco}_saldo`]: parseFloat((r[colSaldo]||"0").toString().replace(",","."))||0,
-            [`${banco}_prazo`]: parseInt(r[colPrazo]||0)||0,
-            [`${banco}_pagas`]: parseInt(r[colPagas]||0)||0,
-            [`${banco}_contrato`]: (r[colContrato]||"").trim(),
-            [`${banco}_vencimento`]: (r[colVenc]||"").trim(),
-          });
+        // ── SAFRA (refinanciamento/higienização) ──────────────────
+        if (tipoDetectado === "safra") {
+          // Agrupa por CPF — pega o contrato com maior saldo devedor
+          const porCPF = {};
+          for (const r of rows) {
+            const cpf = limpar(r["cpf"] || "");
+            if (!cpf || cpf.length < 11) continue;
+            const msg = (r["mensagem_erro"] || "").toLowerCase();
+            if (msg.includes("nenhuma informacao")) continue; // sem contrato
+            const saldo = parseFloat((r["valor_principal"] || "0").toString().replace(",", ".")) || 0;
+            const parcela = parseFloat((r["valor_parcela"] || "0").toString().replace(",", ".")) || 0;
+            const prazo = parseInt(r["prazo"] || 0) || 0;
+            const pagas = parseInt(r["parcelas_pagas"] || 0) || 0;
+            const restantes = parseInt(r["parcelas_restantes"] || 0) || 0;
+            const produto = (r["ds_produto"] || "").trim(); // NOVO ou REFIN
+
+            if (!porCPF[cpf]) {
+              porCPF[cpf] = {
+                cpf,
+                nome: (r["nome"] || "").trim(),
+                nb: (r["matricula"] || "").trim(),
+                convenio: (r["nome_convenio"] || "").trim(),
+                contratos: [],
+                saldo_total: 0,
+                parcela_total: 0,
+              };
+            }
+            porCPF[cpf].contratos.push({
+              id_contrato: (r["id_contrato"] || "").trim(),
+              saldo, parcela, prazo, pagas, restantes, produto,
+              vencimento: (r["proximo_vencimento"] || "").split("T")[0],
+            });
+            porCPF[cpf].saldo_total += saldo;
+            porCPF[cpf].parcela_total += parcela;
+          }
+
+          for (const [cpf, d] of Object.entries(porCPF)) {
+            // Contrato principal = maior saldo
+            const principal = d.contratos.sort((a, b) => b.saldo - a.saldo)[0];
+            const temRefin = d.contratos.some(c => c.produto === "REFIN");
+            regs.push({
+              cpf,
+              nome: d.nome || undefined,
+              nb: d.nb || undefined,
+              convenio: d.convenio || undefined,
+              banco_higienizado: banco,
+              tipo_operacao: temRefin ? "refinanciamento" : "margem_nova",
+              [`${banco}_saldo`]: d.saldo_total,
+              [`${banco}_parcela`]: d.parcela_total,
+              [`${banco}_prazo`]: principal.prazo,
+              [`${banco}_pagas`]: principal.pagas,
+              [`${banco}_contrato`]: principal.id_contrato,
+              [`${banco}_vencimento`]: principal.vencimento,
+            });
+          }
         }
 
-        setProg({txt:`Salvando ${regs.length} registros...`,pct:50});
-        let salvos=0;
-        for (let i=0;i<regs.length;i+=500) {
-          await sbUpsert(SB,"beneficiarios",regs.slice(i,i+500));
-          salvos+=Math.min(500,regs.length-i);
-          setProg({txt:`Salvando... ${fmtNum(salvos)}/${fmtNum(regs.length)}`,pct:50+Math.round(salvos/regs.length*45)});
+        // ── CONSIGLOG (margem disponível Gov. Bahia) ──────────────
+        else if (tipoDetectado === "consiglog") {
+          const porCPF = {};
+          for (const r of rows) {
+            const cpfRaw = r["CPF"] || r["cpf"] || "";
+            const cpf = limpar(cpfRaw);
+            if (!cpf || cpf.length < 11) continue;
+            if (porCPF[cpf]) continue; // pega só primeira linha por CPF
+
+            const margemRaw = (r["MARGEM_DISPONIVEL"] || r["margem_disponivel"] || "0")
+              .toString().replace(/R\$\s*/g, "").replace(/\./g, "").replace(",", ".").trim();
+            const margem = parseFloat(margemRaw) || 0;
+
+            const situacao = (r["SITUACAO"] || r["situacao"] || "").trim();
+            const ativo = situacao.toLowerCase().includes("ativo");
+
+            porCPF[cpf] = {
+              cpf,
+              nome: (r["SERVIDOR"] || r["servidor"] || "").trim(),
+              nb: limpar(r["MATRICULA"] || r["matricula"] || ""),
+              convenio: (r["SECRETARIA"] || r["secretaria"] || r["LOTACAO"] || "").trim(),
+              situacao: situacao,
+              especie: (r["TIPO_SERVIDOR"] || "").trim(),
+              margem_disponivel: margem,
+              temperatura: classif(margem).temp,
+              tipo_operacao: "margem_nova",
+            };
+          }
+          for (const d of Object.values(porCPF)) regs.push(d);
+        }
+
+        // ── GENÉRICO (formato livre) ──────────────────────────────
+        else {
+          const hdrs = Object.keys(rows[0]).map(h => h.toLowerCase().trim());
+          const col = opts => {
+            const h = hdrs.find(h => opts.some(o => h.includes(o)));
+            return h ? Object.keys(rows[0]).find(k => k.toLowerCase().trim() === h) : null;
+          };
+          const colCPF = col(["cpf"]);
+          const colNome = col(["nome","servidor","segurado"]);
+          const colMargem = col(["margem_disponivel","margem","sld_margem"]);
+          const colNB = col(["nb","beneficio","matricula"]);
+          const colConv = col(["convenio","conv","orgao","secretaria"]);
+          const colSit = col(["situacao","status"]);
+          const colParcela = col(["parcela","valor_parcela","vlr_parcela"]);
+          const colSaldo = col(["saldo","valor_principal","saldo_devedor"]);
+          const colPrazo = col(["prazo"]);
+          const colPagas = col(["pagas","parcelas_pagas"]);
+          const colContrato = col(["contrato","id_contrato"]);
+          const colVenc = col(["vencimento","proximo_vencimento"]);
+          for (const r of rows) {
+            const cpf = limpar(r[colCPF] || "");
+            if (!cpf || cpf.length < 11) continue;
+            const margem = parseFloat((r[colMargem]||"0").toString().replace(",",".")) || 0;
+            regs.push({
+              cpf,
+              nome: colNome ? (r[colNome]||"").trim() : undefined,
+              nb: colNB ? (r[colNB]||"").trim() : undefined,
+              convenio: colConv ? (r[colConv]||"").trim() : undefined,
+              situacao: colSit ? (r[colSit]||"").trim() : undefined,
+              margem_disponivel: margem || undefined,
+              temperatura: margem ? classif(margem).temp : undefined,
+              banco_higienizado: banco || undefined,
+              tipo_operacao: banco ? "refinanciamento" : "margem_nova",
+              ...(banco && {
+                [`${banco}_parcela`]: parseFloat((r[colParcela]||"0").toString().replace(",",".")) || 0,
+                [`${banco}_saldo`]: parseFloat((r[colSaldo]||"0").toString().replace(",",".")) || 0,
+                [`${banco}_prazo`]: parseInt(r[colPrazo]||0) || 0,
+                [`${banco}_pagas`]: parseInt(r[colPagas]||0) || 0,
+                [`${banco}_contrato`]: (r[colContrato]||"").trim(),
+                [`${banco}_vencimento`]: (r[colVenc]||"").trim(),
+              }),
+            });
+          }
+        }
+
+        if (!regs.length) { setProg(null); return alert("Nenhum registro válido encontrado."); }
+
+        // Salvar no Supabase em lotes de 300
+        setProg({txt:`Salvando ${regs.length} registros...`, pct:50});
+        let salvos = 0;
+        for (let i = 0; i < regs.length; i += 300) {
+          await sbUpsert(SB, "beneficiarios", regs.slice(i, i + 300));
+          salvos += Math.min(300, regs.length - i);
+          setProg({txt:`Salvando... ${fmtNum(salvos)}/${fmtNum(regs.length)}`, pct: 50 + Math.round(salvos/regs.length*45)});
         }
         setProg(null);
         setOk(regs.length);
         onDone();
       },
-      error: e => { setProg(null); alert("Erro: "+e.message); }
+      error: e => { setProg(null); alert("Erro ao ler arquivo: " + e.message); }
     });
+  };
+
+  const tipoInfo = {
+    safra:     { label:"🏦 Higienização Safra",        cor:"#e65c00", bg:"#fff7ed", desc:"Contratos NOVO/REFIN por CPF" },
+    consiglog: { label:"📋 Margem Consiglog",           cor:"#2563eb", bg:"#eff6ff", desc:"Margem disponível Gov. Bahia" },
+    generico:  { label:"📄 Formato Genérico",           cor:"#7c3aed", bg:"#f5f3ff", desc:"Mapeamento automático de colunas" },
   };
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:WHITE,borderRadius:16,width:"100%",maxWidth:500,boxShadow:"0 24px 64px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{background:`linear-gradient(135deg,${NAVY},#2d4a7a)`,padding:"16px 20px",borderRadius:"16px 16px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{color:WHITE,fontSize:14,fontWeight:700}}>📥 Importar Base do Banco</div>
+      <div style={{background:WHITE,borderRadius:16,width:"100%",maxWidth:540,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 64px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{background:`linear-gradient(135deg,#1a2035,#2d4a7a)`,padding:"16px 20px",borderRadius:"16px 16px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{color:WHITE,fontSize:14,fontWeight:700}}>📥 Importar Base de Clientes</div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"none",color:WHITE,padding:"4px 10px",borderRadius:6,cursor:"pointer"}}>✕</button>
         </div>
+
         <div style={{padding:22}}>
           {ok ? (
-            <div style={{textAlign:"center",padding:"16px 0"}}>
-              <div style={{fontSize:40,marginBottom:10}}>✅</div>
-              <div style={{fontSize:16,fontWeight:700,color:TEXT,marginBottom:6}}>{fmtNum(ok)} registros importados!</div>
-              <div style={{fontSize:12,color:MUTED,marginBottom:16}}>Base do <strong>{BANCOS.find(b=>b.id===banco)?.nome||banco}</strong> atualizada por CPF.</div>
-              <Btn onClick={onClose}>Fechar</Btn>
+            /* ── SUCESSO ── */
+            <div style={{textAlign:"center",padding:"20px 0"}}>
+              <div style={{fontSize:50,marginBottom:10}}>✅</div>
+              <div style={{fontSize:18,fontWeight:800,color:DARK,marginBottom:6}}>{fmtNum(ok)} registros importados!</div>
+              <div style={{fontSize:12,color:MUTED,marginBottom:8}}>
+                {tipoDetectado==="safra" && `Higienização Safra salva — ${fmtNum(ok)} CPFs com contratos.`}
+                {tipoDetectado==="consiglog" && `Margem Consiglog salva — ${fmtNum(ok)} servidores.`}
+                {tipoDetectado==="generico" && `Base genérica salva por CPF.`}
+              </div>
+              <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"8px 14px",fontSize:11,color:"#16a34a",marginBottom:16}}>
+                💡 Dados atualizados por CPF. Clientes existentes foram enriquecidos.
+              </div>
+              <Btn onClick={onClose} cor="#16a34a">✓ Fechar</Btn>
             </div>
+
           ) : prog ? (
-            <div style={{textAlign:"center",padding:"16px 0"}}>
-              <div style={{fontSize:13,fontWeight:600,color:TEXT,marginBottom:12}}>{prog.txt}</div>
-              <div style={{background:"#f1f5f9",borderRadius:99,height:8,overflow:"hidden",marginBottom:6}}>
-                <div style={{height:"100%",width:`${prog.pct}%`,background:`linear-gradient(90deg,${NAVY},#6366f1)`,borderRadius:99,transition:"width .5s"}}></div>
+            /* ── PROGRESSO ── */
+            <div style={{textAlign:"center",padding:"20px 0"}}>
+              <div style={{fontSize:36,marginBottom:12}}>⏳</div>
+              <div style={{fontSize:13,fontWeight:600,color:DARK,marginBottom:12}}>{prog.txt}</div>
+              <div style={{background:"#f1f5f9",borderRadius:99,height:10,overflow:"hidden",marginBottom:6}}>
+                <div style={{height:"100%",width:`${prog.pct}%`,background:"linear-gradient(90deg,#4361ee,#7c3aed)",borderRadius:99,transition:"width .4s"}}></div>
               </div>
               <div style={{fontSize:11,color:MUTED}}>{prog.pct}%</div>
             </div>
-          ) : (<>
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:10,color:MUTED,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Banco da Higienização</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
-                {BANCOS.map(b=>(
-                  <div key={b.id} onClick={()=>setBanco(b.id)}
-                    style={{border:`2px solid ${banco===b.id?b.cor:BORDER}`,borderRadius:10,padding:"10px 6px",textAlign:"center",cursor:"pointer",background:banco===b.id?`${b.cor}10`:BG,transition:"all .15s"}}>
-                    <div style={{display:"flex",justifyContent:"center",marginBottom:4}}>
-                      <LogoBanco id={b.id} size={32}/>
-                    </div>
-                    <div style={{fontSize:9,fontWeight:700,color:banco===b.id?b.cor:MUTED}}>{b.nome}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                {[{id:"inss",nome:"INSS"},{id:"gov_bahia",nome:"Gov. Bahia"}].map(b=>(
-                  <div key={b.id} onClick={()=>setBanco(b.id)}
-                    style={{border:`2px solid ${banco===b.id?NAVY:BORDER}`,borderRadius:10,padding:"10px",textAlign:"center",cursor:"pointer",background:banco===b.id?`${NAVY}10`:BG}}>
-                    <div style={{fontSize:14,marginBottom:2}}>{b.id==="inss"?"🏛️":"🏢"}</div>
-                    <div style={{fontSize:11,fontWeight:700,color:banco===b.id?NAVY:MUTED}}>{b.nome}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:10,color:MUTED,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Arquivo CSV / Excel</div>
-              <div onClick={()=>fileRef.current?.click()}
-                style={{border:`2px dashed ${arquivo?"#22c55e":BORDER}`,borderRadius:10,padding:"22px",textAlign:"center",cursor:"pointer",background:arquivo?"#f0fdf4":BG}}>
-                <div style={{fontSize:30,marginBottom:6}}>{arquivo?"📄":"📂"}</div>
-                <div style={{fontSize:12,color:arquivo?"#16a34a":MUTED,fontWeight:arquivo?700:400}}>
-                  {arquivo?arquivo.name:"Clique para selecionar o arquivo"}
+          ) : (
+            /* ── FORMULÁRIO ── */
+            <>
+              {/* Área de upload */}
+              <div style={{marginBottom:18}}>
+                <div style={{fontSize:10,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:".8px",marginBottom:8}}>1. Selecione o Arquivo CSV</div>
+                <div onClick={()=>fileRef.current?.click()}
+                  style={{border:`2px dashed ${arquivo?"#22c55e":BORDER}`,borderRadius:12,padding:"28px 20px",textAlign:"center",cursor:"pointer",background:arquivo?"#f0fdf4":"#fafafa",transition:"all .2s"}}>
+                  <div style={{fontSize:36,marginBottom:8}}>{arquivo?"📄":"☁️"}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:arquivo?"#16a34a":DARK,marginBottom:4}}>
+                    {arquivo ? arquivo.name : "Arraste e solte seu arquivo aqui"}
+                  </div>
+                  <div style={{fontSize:11,color:MUTED}}>{arquivo ? "Clique para trocar" : "ou clique para selecionar · Suporta .csv"}</div>
+                  <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}}
+                    onChange={e=>{ if(e.target.files[0]) detectarTipo(e.target.files[0]); }}/>
                 </div>
-                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>setArquivo(e.target.files[0])}/>
               </div>
-            </div>
 
-            <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:11,color:"#92400e"}}>
-              💡 Dados salvos por CPF. Se o cliente já existe, as informações serão atualizadas automaticamente.
-            </div>
+              {/* Tipo detectado */}
+              {tipoDetectado && (
+                <div style={{marginBottom:18}}>
+                  <div style={{fontSize:10,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:".8px",marginBottom:8}}>2. Tipo Detectado Automaticamente</div>
+                  <div style={{background:tipoInfo[tipoDetectado]?.bg||"#f8fafc",border:`1.5px solid ${tipoInfo[tipoDetectado]?.cor||BORDER}`,borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{fontSize:28}}>
+                      {tipoDetectado==="safra"?"🏦":tipoDetectado==="consiglog"?"📋":"📄"}
+                    </div>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:tipoInfo[tipoDetectado]?.cor}}>{tipoInfo[tipoDetectado]?.label}</div>
+                      <div style={{fontSize:11,color:MUTED}}>{tipoInfo[tipoDetectado]?.desc}</div>
+                    </div>
+                    <div style={{marginLeft:"auto",background:tipoInfo[tipoDetectado]?.cor,color:WHITE,fontSize:9,fontWeight:800,padding:"3px 9px",borderRadius:99}}>AUTO</div>
+                  </div>
 
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-              <Btn onClick={onClose} style={{background:BG,color:TEXT}}>Cancelar</Btn>
-              <Btn onClick={importar} disabled={!banco||!arquivo} cor={NAVY}>📥 Importar Base</Btn>
-            </div>
-          </>)}
+                  {/* Preview */}
+                  {preview && (
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+                      <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+                        <div style={{fontSize:20,fontWeight:900,color:DARK}}>{fmtNum(preview.total)}</div>
+                        <div style={{fontSize:10,color:MUTED}}>Linhas no arquivo</div>
+                      </div>
+                      <div style={{background:"#f0fdf4",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+                        <div style={{fontSize:20,fontWeight:900,color:"#16a34a"}}>{fmtNum(preview.comDados)}</div>
+                        <div style={{fontSize:10,color:MUTED}}>Com dados válidos</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Banco (só para Safra ou genérico) */}
+              {tipoDetectado && tipoDetectado !== "consiglog" && (
+                <div style={{marginBottom:18}}>
+                  <div style={{fontSize:10,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:".8px",marginBottom:8}}>
+                    3. Banco {tipoDetectado==="safra"?"(Safra — pré-selecionado)":""}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                    {BANCOS.map(b=>(
+                      <div key={b.id} onClick={()=>setBanco(b.id)}
+                        style={{border:`2px solid ${banco===b.id?b.cor:BORDER}`,borderRadius:10,padding:"10px 6px",textAlign:"center",cursor:"pointer",background:banco===b.id?`${b.cor}10`:"#fafafa",transition:"all .15s"}}>
+                        <div style={{display:"flex",justifyContent:"center",marginBottom:4}}><LogoBanco id={b.id} size={30}/></div>
+                        <div style={{fontSize:9,fontWeight:700,color:banco===b.id?b.cor:MUTED}}>{b.nome}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Info Consiglog */}
+              {tipoDetectado === "consiglog" && (
+                <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:11,color:"#1d4ed8"}}>
+                  ℹ️ Planilha de margem do Consiglog — salva margem disponível, matrícula, situação e secretaria por CPF. Não precisa selecionar banco.
+                </div>
+              )}
+
+              <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:11,color:"#92400e"}}>
+                💡 Dados salvos por CPF. Clientes existentes são atualizados automaticamente sem duplicar.
+              </div>
+
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <Btn onClick={onClose} style={{background:"#f3f4f6",color:DARK}}>Cancelar</Btn>
+                <Btn onClick={importar}
+                  disabled={!arquivo || !tipoDetectado || (tipoDetectado!=="consiglog" && !banco)}
+                  cor="#4361ee">
+                  📥 Importar Base
+                </Btn>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
