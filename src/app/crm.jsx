@@ -785,38 +785,62 @@ export default function BravoCRM() {
       {/* Input file oculto */}
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>importarCSV(e.target.files[0])}/>
 
-      {/* ── SIDEBAR ── */}
-      <div style={{width:210,background:`linear-gradient(180deg,${NAVY},#223460)`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
-        <div style={{padding:"20px 18px 16px",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-            <div style={{width:32,height:32,background:"linear-gradient(135deg,#f59e0b,#f97316)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:WHITE}}>B</div>
+      {/* ── SIDEBAR MODERNA ── */}
+      <div style={{width:220,background:"linear-gradient(180deg,#0f1729 0%,#1a2b4a 100%)",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto",borderRight:"1px solid rgba(255,255,255,0.06)"}}>
+        {/* Logo */}
+        <div style={{padding:"18px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:34,height:34,background:"linear-gradient(135deg,#f59e0b,#f97316)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:"#fff",flexShrink:0}}>B</div>
             <div>
-              <div style={{color:WHITE,fontWeight:800,fontSize:13}}>BRAVO</div>
-              <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,letterSpacing:"2px"}}>CONSIGNADO</div>
+              <div style={{color:"#fff",fontWeight:800,fontSize:13,letterSpacing:"-.02em"}}>bravo</div>
+              <div style={{color:"rgba(255,255,255,0.35)",fontSize:9,letterSpacing:"2px",marginTop:1}}>CONSIGNADO</div>
             </div>
           </div>
-          <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginTop:4}}>Marcelo Cerqueira</div>
+          <div style={{marginTop:10,background:"rgba(255,255,255,0.06)",borderRadius:7,padding:"7px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"1px",marginBottom:2}}>BASE TOTAL</div>
+              <div style={{fontSize:18,fontWeight:900,color:ORANGE}}>{fmtNum(totalBen||337897)}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",marginBottom:2}}>NO FUNIL</div>
+              <div style={{fontSize:14,fontWeight:700,color:"#a78bfa"}}>{fmtNum(funilAtivo)}</div>
+            </div>
+          </div>
         </div>
 
-        <nav style={{flex:1,padding:"6px 0"}}>
+        {/* Nav */}
+        <nav style={{flex:1,padding:"8px 0",overflowY:"auto"}}>
           {navGroups.map(g=>(
             <div key={g.group}>
-              <div style={{fontSize:9,color:"rgba(255,255,255,0.25)",padding:"10px 18px 3px",letterSpacing:"1.5px",fontWeight:700}}>{g.group}</div>
-              {g.items.map(n=>(
-                <div key={n.id} onClick={()=>setTela(n.id)}
-                  style={{display:"flex",alignItems:"center",gap:9,padding:"8px 18px",cursor:"pointer",fontSize:12,fontWeight:tela===n.id?600:400,color:tela===n.id?WHITE:"rgba(255,255,255,0.4)",background:tela===n.id?"rgba(255,255,255,0.11)":"transparent",borderLeft:`3px solid ${tela===n.id?ORANGE:"transparent"}`,transition:"all 0.12s"}}>
-                  <span style={{fontSize:13}}>{n.icon}</span>{n.label}
-                  {n.id==="tarefas"&&tarefasAtras>0&&<span style={{marginLeft:"auto",background:"#ef4444",color:WHITE,fontSize:9,fontWeight:700,borderRadius:10,padding:"1px 5px"}}>{tarefasAtras}</span>}
-                </div>
-              ))}
+              <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",padding:"10px 16px 3px",letterSpacing:"1.5px",fontWeight:700,textTransform:"uppercase"}}>{g.group}</div>
+              {g.items.map(n=>{
+                const ativo = tela===n.id;
+                return (
+                  <div key={n.id} onClick={()=>setTela(n.id)}
+                    style={{display:"flex",alignItems:"center",gap:9,padding:"8px 16px",cursor:"pointer",fontSize:12,fontWeight:ativo?600:400,color:ativo?"#fff":"rgba(255,255,255,0.45)",background:ativo?"rgba(245,158,11,0.15)":"transparent",borderLeft:`3px solid ${ativo?ORANGE:"transparent"}`,transition:"all 0.12s",margin:"1px 0",borderRadius:"0 8px 8px 0",marginRight:8}}>
+                    <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0}}>{n.icon}</span>
+                    <span style={{flex:1}}>{n.label}</span>
+                    {n.id==="tarefas"&&tarefasAtras>0&&<span style={{background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:10,padding:"1px 5px",marginLeft:"auto"}}>{tarefasAtras}</span>}
+                    {n.id==="oportunidades"&&quentes>0&&<span style={{background:"rgba(34,197,94,0.2)",color:"#22c55e",fontSize:9,fontWeight:700,borderRadius:10,padding:"1px 5px",marginLeft:"auto"}}>{quentes}</span>}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </nav>
 
-        <div style={{margin:10,background:"rgba(255,255,255,0.07)",borderRadius:9,padding:"10px 12px"}}>
-          <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",letterSpacing:"1px",marginBottom:3}}>BASE TOTAL</div>
-          <div style={{fontSize:20,fontWeight:900,color:ORANGE}}>337.897</div>
-          <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",marginTop:1}}>beneficiários · {fmtNum(funilAtivo)} no funil</div>
+        {/* Rodapé */}
+        <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:28,height:28,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>M</div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"#fff"}}>Marcelo Cerqueira</div>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",marginTop:1,display:"flex",alignItems:"center",gap:4}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:"#22c55e",display:"inline-block",boxShadow:"0 0 4px rgba(34,197,94,0.6)"}}></span>
+                online
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -837,16 +861,35 @@ export default function BravoCRM() {
 
           {/* ════ DASHBOARD ════ */}
           {tela==="dashboard"&&<>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:18}}>
-              <KpiCard label="Contatos" val={contatos.length} sub="na carteira" cor={NAVY} icon="👥" onClick={()=>setTela("contatos")}/>
-              <KpiCard label="Quentes" val={quentes} sub="margem ≥ R$ 300" cor="#22c55e" icon="🔥" onClick={()=>setTela("oportunidades")}/>
-              <KpiCard label="Tarefas" val={tarefasPend} sub={`${tarefasAtras} atrasadas`} cor={tarefasAtras>0?"#ef4444":ORANGE} icon="✓" onClick={()=>setTela("tarefas")}/>
-              <KpiCard label="Funil" val={funilAtivo} sub={fmtBRL(valorFunil)} cor="#6366f1" icon="◈" onClick={()=>setTela("funil")}/>
+            {/* KPIs principais */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:16}}>
+              {[
+                {label:"CONTATOS",val:fmtNum(contatos.length),sub:"na carteira",cor:"#6366f1",bg:"rgba(99,102,241,0.1)",icon:"👥",onClick:()=>setTela("contatos")},
+                {label:"QUENTES",val:fmtNum(quentes),sub:"margem ≥ R$300",cor:"#22c55e",bg:"rgba(34,197,94,0.1)",icon:"🔥",onClick:()=>setTela("oportunidades")},
+                {label:"TAREFAS",val:fmtNum(tarefasPend),sub:`${tarefasAtras} atrasadas`,cor:tarefasAtras>0?"#ef4444":ORANGE,bg:tarefasAtras>0?"rgba(239,68,68,0.1)":"rgba(245,158,11,0.1)",icon:"✓",onClick:()=>setTela("tarefas")},
+                {label:"NO FUNIL",val:fmtNum(funilAtivo),sub:fmtBRL(valorFunil),cor:"#8b5cf6",bg:"rgba(139,92,246,0.1)",icon:"◈",onClick:()=>setTela("funil")},
+                {label:"BASE",val:fmtNum(totalBen||337897),sub:"beneficiários",cor:"#0ea5e9",bg:"rgba(14,165,233,0.1)",icon:"🗄️",onClick:()=>setTela("pesquisa")},
+              ].map(k=>(
+                <div key={k.label} onClick={k.onClick} style={{background:WHITE,borderRadius:12,padding:"14px 16px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)",border:`1px solid ${BORDER}`,cursor:"pointer",position:"relative",overflow:"hidden",transition:"all .2s"}}
+                  onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                  onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+                  <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:k.cor,borderRadius:"12px 12px 0 0"}}></div>
+                  <div style={{width:36,height:36,background:k.bg,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,marginBottom:8}}>{k.icon}</div>
+                  <div style={{fontSize:9,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:22,fontWeight:900,color:k.cor,lineHeight:1,letterSpacing:"-.04em"}}>{k.val}</div>
+                  <div style={{fontSize:10,color:MUTED,marginTop:5}}>{k.sub}</div>
+                </div>
+              ))}
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:14,marginBottom:14}}>
+
+            {/* Gráficos */}
+            <div style={{display:"grid",gridTemplateColumns:"1.6fr 1fr",gap:14,marginBottom:14}}>
               <Card>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:14}}>📊 Contatos por Mês</div>
-                <ResponsiveContainer width="100%" height={180}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                  <div style={{fontSize:12,fontWeight:700,color:TEXT}}>📊 Atividade Mensal</div>
+                  <div style={{fontSize:10,color:MUTED}}>Base vs Contatos</div>
+                </div>
+                <ResponsiveContainer width="100%" height={170}>
                   <BarChart data={barData} barGap={4}>
                     <XAxis dataKey="mes" tick={{fontSize:10,fill:MUTED}} axisLine={false} tickLine={false}/>
                     <YAxis hide/>
@@ -855,49 +898,79 @@ export default function BravoCRM() {
                     <Bar dataKey="contatos" fill={ORANGE} radius={[4,4,0,0]} name="Contatos"/>
                   </BarChart>
                 </ResponsiveContainer>
+                <div style={{display:"flex",gap:14,marginTop:8}}>
+                  <span style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:MUTED}}><span style={{width:8,height:8,borderRadius:2,background:NAVY,display:"inline-block"}}></span>Base</span>
+                  <span style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:MUTED}}><span style={{width:8,height:8,borderRadius:2,background:ORANGE,display:"inline-block"}}></span>Contatos</span>
+                </div>
               </Card>
+
               <Card>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>◈ Funil</div>
+                <div style={{fontSize:12,fontWeight:700,color:TEXT,marginBottom:12}}>◈ Funil de Vendas</div>
                 {ETAPAS_FUNIL.filter(e=>e.id!=="perdido").map(e=>{
                   const q=funil.filter(f=>f.etapa===e.id).length;
                   const mx=Math.max(...ETAPAS_FUNIL.map(x=>funil.filter(f=>f.etapa===x.id).length),1);
-                  return <div key={e.id} style={{marginBottom:7}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span>{e.icon} {e.label}</span><span style={{fontWeight:700,color:e.cor}}>{q}</span></div>
-                    <div style={{height:5,background:BORDER,borderRadius:3}}><div style={{height:"100%",width:`${Math.round(q/mx*100)}%`,background:e.cor,borderRadius:3}}/></div>
+                  return <div key={e.id} style={{marginBottom:8}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                      <span style={{color:TEXT,fontWeight:500}}>{e.label}</span>
+                      <span style={{fontWeight:700,color:NAVY}}>{q}</span>
+                    </div>
+                    <div style={{height:5,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${(q/mx)*100}%`,background:`linear-gradient(90deg,${NAVY},#6366f1)`,borderRadius:99,transition:"width 0.8s ease"}}></div>
+                    </div>
                   </div>;
                 })}
               </Card>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+
+            {/* Segunda linha */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+              {/* Temperatura */}
               <Card>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
-                  <div style={{fontSize:13,fontWeight:700}}>✓ Tarefas do Dia</div>
-                  <Badge label={`${tarefasPend} pendentes`} cor={ORANGE}/>
-                </div>
-                {tarefas.filter(t=>t.status==="pendente").slice(0,5).map((t,i)=>{
-                  const at=t.data_vencimento&&new Date(t.data_vencimento)<new Date();
-                  return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 9px",borderRadius:7,marginBottom:4,background:at?"#fff5f5":BG,border:`1px solid ${at?"#fca5a5":BORDER}`}}>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:600}}>{t.titulo}</div>
-                      <div style={{fontSize:10,color:at?"#ef4444":MUTED}}>{fmtDT(t.data_vencimento)}{at&&" • ATRASADA"}</div>
-                    </div>
-                    <button onClick={()=>concluirTarefa(t.id)} style={{padding:"4px 10px",background:"#22c55e",border:"none",borderRadius:6,color:WHITE,fontSize:11,fontWeight:700,cursor:"pointer"}}>✓</button>
-                  </div>;
-                })}
-                {tarefasPend===0&&<div style={{textAlign:"center",color:MUTED,padding:16,fontSize:12}}>✅ Sem tarefas pendentes!</div>}
+                <div style={{fontSize:12,fontWeight:700,color:TEXT,marginBottom:12}}>🌡 Temperatura da Base</div>
+                {[
+                  {label:"🔥 Quentes",val:quentes,cor:"#22c55e"},
+                  {label:"🌡 Mornos",val:contatos.filter(c=>parseFloat(c.margem_disponivel||0)>=50&&parseFloat(c.margem_disponivel||0)<300).length,cor:"#f59e0b"},
+                  {label:"⚠️ Tomadores",val:contatos.filter(c=>parseFloat(c.margem_disponivel||0)>0&&parseFloat(c.margem_disponivel||0)<50).length,cor:"#f97316"},
+                  {label:"⭕ Zerados",val:contatos.filter(c=>parseFloat(c.margem_disponivel||0)===0).length,cor:"#94a3b8"},
+                ].map(t=>(
+                  <div key={t.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${BORDER}`}}>
+                    <span style={{fontSize:12,color:TEXT}}>{t.label}</span>
+                    <span style={{fontWeight:800,color:t.cor,fontSize:14}}>{fmtNum(t.val)}</span>
+                  </div>
+                ))}
               </Card>
+
+              {/* Tarefas recentes */}
               <Card>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>📞 Últimos Atendimentos</div>
-                {atendimentos.slice(0,6).map((a,i)=>{
-                  const c=contatos.find(x=>x.cpf===a.cpf);
-                  return <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${BORDER}`}}>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:600}}>{c?.nome?.split(" ").slice(0,3).join(" ")||a.cpf}</div>
-                      <div style={{fontSize:10,color:MUTED}}>{a.tipo} · {a.resultado||"—"}</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:700,color:TEXT}}>✓ Tarefas Pendentes</div>
+                  <div onClick={()=>setTela("tarefas")} style={{fontSize:10,color:"#6366f1",cursor:"pointer",fontWeight:600}}>Ver todas →</div>
+                </div>
+                {tarefas.filter(t=>t.status!=="feita").slice(0,4).map(t=>(
+                  <div key={t.id} style={{padding:"7px 0",borderBottom:`1px solid ${BORDER}`,cursor:"pointer"}} onClick={()=>setTela("tarefas")}>
+                    <div style={{fontSize:12,fontWeight:500,color:TEXT,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.titulo}</div>
+                    <div style={{fontSize:10,color:new Date(t.vencimento)<new Date()?"#ef4444":MUTED}}>{fmtD(t.vencimento)} · {t.contato_nome||"—"}</div>
+                  </div>
+                ))}
+                {tarefas.filter(t=>t.status!=="feita").length===0&&<div style={{fontSize:12,color:MUTED,textAlign:"center",padding:"16px 0"}}>✅ Sem tarefas pendentes</div>}
+              </Card>
+
+              {/* Atendimentos recentes */}
+              <Card>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:700,color:TEXT}}>📞 Últimos Atendimentos</div>
+                  <div onClick={()=>setTela("atendimentos")} style={{fontSize:10,color:"#6366f1",cursor:"pointer",fontWeight:600}}>Ver todos →</div>
+                </div>
+                {atendimentos.slice(0,4).map(a=>(
+                  <div key={a.id} style={{padding:"7px 0",borderBottom:`1px solid ${BORDER}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                      <span style={{fontSize:12,fontWeight:500,color:TEXT}}>{a.contato_nome||"—"}</span>
+                      <span style={{fontSize:10,background:"#f1f5f9",borderRadius:99,padding:"1px 7px",color:MUTED}}>{a.tipo||"—"}</span>
                     </div>
-                    <div style={{fontSize:10,color:MUTED}}>{fmtD(a.created_at)}</div>
-                  </div>;
-                })}
+                    <div style={{fontSize:10,color:MUTED}}>{fmtDT(a.created_at)}</div>
+                  </div>
+                ))}
+                {atendimentos.length===0&&<div style={{fontSize:12,color:MUTED,textAlign:"center",padding:"16px 0"}}>Nenhum atendimento</div>}
               </Card>
             </div>
           </>}
