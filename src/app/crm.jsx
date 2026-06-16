@@ -496,7 +496,7 @@ function PainelFiltros({filtros, setFiltro, onBuscar, showBanco=true, showParcel
 
 // ═══════════════ COMPONENTE PRINCIPAL ═══════════════
 export default function CRM() {
-  const [aba, setAba] = useState("oportunidades");
+  const [aba, setAba] = useState("dashboard");
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -569,10 +569,11 @@ export default function CRM() {
   };
 
   const ABAS = [
-    { id:"oportunidades",  icon:"💡", label:"Oportunidades",   desc:"Clientes com margem livre" },
-    { id:"refinanciamento",icon:"🔄", label:"Refinanciamento",  desc:"Contratos para refinanciar" },
+    { id:"dashboard",      icon:"📊", label:"Dashboard",         desc:"Visão geral" },
+    { id:"oportunidades",  icon:"💡", label:"Oportunidades",     desc:"Clientes com margem livre" },
+    { id:"refinanciamento",icon:"🔄", label:"Refinanciamento",   desc:"Contratos para refinanciar" },
     { id:"base",           icon:"🗄️", label:"Base Completa",    desc:"Todos os clientes" },
-    { id:"importar",       icon:"📥", label:"Importações",       desc:"Importar base do banco" },
+    { id:"importar",       icon:"📥", label:"Importações",        desc:"Importar base do banco" },
   ];
 
   return (
@@ -621,6 +622,128 @@ export default function CRM() {
         </div>
       </div>
 
+      {/* DASHBOARD */}
+      {aba==="dashboard" && (
+        <div style={{flex:1,overflow:"auto",padding:"22px 24px",background:BG}}>
+
+          {/* KPIs */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:20}}>
+            {[
+              {icon:"👥",label:"Total na Base",val:fmtNum(totalBase||clientes.length),sub:"beneficiários",cor:"#6366f1",bg:"rgba(99,102,241,.08)",onClick:()=>setAba("base")},
+              {icon:"🔥",label:"Quentes",val:fmtNum(stats.quentes),sub:"margem ≥ R$300",cor:"#22c55e",bg:"rgba(34,197,94,.08)",onClick:()=>setAba("oportunidades")},
+              {icon:"🌡",label:"Mornos",val:fmtNum(stats.mornos),sub:"R$50 a R$299",cor:"#f59e0b",bg:"rgba(245,158,11,.08)",onClick:()=>setAba("oportunidades")},
+              {icon:"🔄",label:"Refinanciamento",val:fmtNum(clientes.filter(c=>c.banco_higienizado).length),sub:"com banco higienizado",cor:"#0891b2",bg:"rgba(8,145,178,.08)",onClick:()=>setAba("refinanciamento")},
+              {icon:"💰",label:"Margem Total",val:(() => { const t=clientes.reduce((s,c)=>s+parseFloat(c.margem_disponivel||0),0); return t>=1000000?"R$"+(t/1000000).toFixed(1)+"M":"R$"+fmtNum(Math.round(t)); })(),sub:"disponível na base",cor:"#7c3aed",bg:"rgba(124,58,237,.08)",onClick:()=>{}},
+            ].map(k=>(
+              <div key={k.label} onClick={k.onClick} style={{background:WHITE,borderRadius:14,padding:"16px 18px",border:`1px solid ${BORDER}`,cursor:"pointer",position:"relative",overflow:"hidden",transition:"all .2s",boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}
+                onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,.1)"}}
+                onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,.06)"}}>
+                <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:k.cor,borderRadius:"14px 14px 0 0"}}></div>
+                <div style={{width:38,height:38,background:k.bg,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginBottom:10}}>{k.icon}</div>
+                <div style={{fontSize:9,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>{k.label}</div>
+                <div style={{fontSize:24,fontWeight:900,color:k.cor,lineHeight:1,letterSpacing:"-.04em"}}>{k.val}</div>
+                <div style={{fontSize:10,color:MUTED,marginTop:5}}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr",gap:16,marginBottom:16}}>
+
+            {/* Temperatura */}
+            <div style={{background:WHITE,borderRadius:14,padding:"18px 20px",border:`1px solid ${BORDER}`,boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:13,fontWeight:700,color:TEXT,marginBottom:14}}>🌡 Classificação por Temperatura</div>
+              {[
+                {label:"🔥 Quentes",val:stats.quentes,cor:"#22c55e",bg:"#dcfce7",pct:clientes.length?Math.round(stats.quentes/clientes.length*100):0},
+                {label:"🌡 Mornos",val:stats.mornos,cor:"#f59e0b",bg:"#fef3c7",pct:clientes.length?Math.round(stats.mornos/clientes.length*100):0},
+                {label:"⚠️ Tomadores",val:stats.tomadores,cor:"#f97316",bg:"#ffedd5",pct:clientes.length?Math.round(stats.tomadores/clientes.length*100):0},
+                {label:"⭕ Zerados",val:stats.zerados,cor:"#94a3b8",bg:"#f1f5f9",pct:clientes.length?Math.round(stats.zerados/clientes.length*100):0},
+              ].map(t=>(
+                <div key={t.label} style={{marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                    <span style={{fontSize:12,fontWeight:500,color:TEXT}}>{t.label}</span>
+                    <span style={{fontSize:12,fontWeight:800,color:t.cor}}>{fmtNum(t.val)} <span style={{fontSize:10,color:MUTED,fontWeight:400}}>({t.pct}%)</span></span>
+                  </div>
+                  <div style={{height:6,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${t.pct}%`,background:t.cor,borderRadius:99,transition:"width 1s ease"}}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Bancos */}
+            <div style={{background:WHITE,borderRadius:14,padding:"18px 20px",border:`1px solid ${BORDER}`,boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:13,fontWeight:700,color:TEXT,marginBottom:14}}>🏦 Clientes por Banco Higienizado</div>
+              {BANCOS.map(b=>{
+                const qt = clientes.filter(c=>c.banco_higienizado===b.id).length;
+                const pct = clientes.length ? Math.round(qt/clientes.length*100) : 0;
+                if (!qt) return null;
+                return (
+                  <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}} onClick={()=>{setFiltro("banco",b.id);setAba("refinanciamento");}}>
+                    <LogoBanco id={b.id} size={28}/>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                        <span style={{fontSize:11,fontWeight:600,color:TEXT}}>{b.nome}</span>
+                        <span style={{fontSize:11,fontWeight:800,color:b.cor}}>{fmtNum(qt)}</span>
+                      </div>
+                      <div style={{height:4,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${pct}%`,background:b.cor,borderRadius:99}}></div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {!clientes.some(c=>c.banco_higienizado) && (
+                <div style={{textAlign:"center",padding:"20px",color:MUTED,fontSize:12}}>Importe uma base higienizada para ver os dados</div>
+              )}
+            </div>
+          </div>
+
+          {/* Clientes quentes recentes */}
+          <div style={{background:WHITE,borderRadius:14,border:`1px solid ${BORDER}`,overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+            <div style={{padding:"14px 18px",borderBottom:`1px solid ${BORDER}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontSize:13,fontWeight:700,color:TEXT}}>🔥 Top Clientes — Maior Margem</div>
+              <div onClick={()=>setAba("oportunidades")} style={{fontSize:11,color:"#6366f1",fontWeight:600,cursor:"pointer"}}>Ver todos →</div>
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:"#f8fafc"}}>
+                  {["#","Nome","CPF","Cidade","Telefone","Margem","Temp.","Ação"].map(h=>(
+                    <th key={h} style={{padding:"8px 14px",textAlign:"left",fontSize:9,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",borderBottom:`1px solid ${BORDER}`}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {clientes.filter(c=>parseFloat(c.margem_disponivel||0)>0).slice(0,8).map((c,i)=>{
+                  const m = parseFloat(c.margem_disponivel||0);
+                  const cl = classif(m);
+                  const tel = c.telefone1||c.dd1;
+                  return (
+                    <tr key={c.cpf||i} style={{borderBottom:`1px solid #f1f5f9`,cursor:"pointer"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                      onMouseLeave={e=>e.currentTarget.style.background=WHITE}
+                      onClick={()=>setClienteSel(c)}>
+                      <td style={{padding:"9px 14px",color:MUTED,fontWeight:700}}>{i+1}</td>
+                      <td style={{padding:"9px 14px",fontWeight:600,color:TEXT,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nome||"—"}</td>
+                      <td style={{padding:"9px 14px",fontFamily:"monospace",fontSize:11,color:MUTED}}>{fmtCPF(c.cpf)}</td>
+                      <td style={{padding:"9px 14px",color:TEXT}}>{c.cidade||"—"}</td>
+                      <td style={{padding:"9px 14px",fontFamily:"monospace",fontSize:11,color:MUTED}}>{fmtTel(tel)}</td>
+                      <td style={{padding:"9px 14px",fontWeight:800,color:cl.cor,fontSize:13}}>{fmtBRL(m)}</td>
+                      <td style={{padding:"9px 14px"}}><span style={{background:cl.bg,color:cl.cor,padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:700}}>{cl.label}</span></td>
+                      <td style={{padding:"9px 14px"}}>
+                        <div style={{display:"flex",gap:4}}>
+                          <button onClick={e=>{e.stopPropagation();setClienteSel(c);}} style={{padding:"4px 9px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,color:"#1d4ed8",fontSize:10,fontWeight:700,cursor:"pointer"}}>Ver</button>
+                          {tel&&<button onClick={e=>{e.stopPropagation();wpp(tel);}} style={{padding:"4px 9px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:6,color:"#16a34a",fontSize:10,fontWeight:700,cursor:"pointer"}}>💬</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* LOGOS DOS BANCOS (aba refinanciamento) */}
       {aba==="refinanciamento" && (
         <div style={{background:WHITE,borderBottom:`1px solid ${BORDER}`,padding:"12px 24px"}}>
@@ -647,15 +770,15 @@ export default function CRM() {
       )}
 
       {/* FILTROS */}
-      <PainelFiltros
+      {aba!=="dashboard" && <PainelFiltros
         filtros={filtros} setFiltro={setFiltro}
         onBuscar={()=>buscar()}
         showBanco={aba!=="refinanciamento"}
         showParcela={aba==="refinanciamento"}
-      />
+      />}
 
       {/* STATS */}
-      <div style={{background:"#f8fafc",borderBottom:`1px solid ${BORDER}`,padding:"7px 24px",display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
+      {aba!=="dashboard" && <div style={{background:"#f8fafc",borderBottom:`1px solid ${BORDER}`,padding:"7px 24px",display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
         {[
           {label:"🔥 Quentes",val:stats.quentes,cor:"#22c55e"},
           {label:"🌡 Mornos",val:stats.mornos,cor:"#f59e0b"},
@@ -670,17 +793,17 @@ export default function CRM() {
         <div style={{marginLeft:"auto",fontSize:11,color:MUTED}}>
           {fmtNum(Math.min(pagina*POR_PAG,clientes.length))} de {fmtNum(clientes.length)} registros
         </div>
-      </div>
+      </div>}
 
       {/* CONTEÚDO */}
-      <div style={{flex:1,overflow:"auto",background:WHITE}}>
+      {aba!=="dashboard" && <div style={{flex:1,overflow:"auto",background:WHITE}}>
         <TabelaClientes
           clientes={clientes} loading={loading}
           onVerCliente={setClienteSel}
           pagina={pagina} setPagina={setPagina}
           total={totalBase} POR_PAG={POR_PAG}
         />
-      </div>
+      </div>}
     </div>
   );
 }
