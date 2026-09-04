@@ -67,7 +67,7 @@ const mascaraTel = (v) => {
   return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 };
 
-const WHATSAPP = "5577981419898"; // (77) 98141-9898
+const WHATSAPP = "5577981419897"; // (77) 98141-9897
 
 export default function SimuladorCliente() {
   const [etapa, setEtapa] = useState(1); // 1: dados, 2: resultado
