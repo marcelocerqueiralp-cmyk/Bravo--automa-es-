@@ -77,8 +77,15 @@ const mascaraTel = (v) => {
 
 const WHATSAPP = "5577981419897"; // (77) 98141-9897
 
+const SEGMENTOS = [
+  { id: "bahia", label: "Governo da Bahia" },
+  { id: "inss", label: "INSS" },
+  { id: "clt", label: "CLT" }
+];
+
 export default function SimuladorCliente() {
   const [etapa, setEtapa] = useState(1); // 1: dados, 2: resultado
+  const [segmento, setSegmento] = useState("bahia");
   const [nome, setNome] = useState("");
   const [cpf, setCpf] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -113,7 +120,7 @@ export default function SimuladorCliente() {
       telefone1: soDigitos(telefone),
       margem_disponivel: parseFloat(margem),
       temperatura: "quente",
-      tipo_operacao: "margem_nova"
+      tipo_operacao: `margem_nova_${segmento}`
     });
 
     setEnviando(false);
@@ -121,8 +128,9 @@ export default function SimuladorCliente() {
   };
 
   const linkWhats = () => {
+    const nomeSegmento = SEGMENTOS.find((s) => s.id === segmento)?.label || "";
     const texto = encodeURIComponent(
-      `Olá! Meu nome é ${primeirosNomes(nome)}, CPF ${cpf}. Simulei um empréstimo consignado no site da Bravo Consig.\n` +
+      `Olá! Meu nome é ${primeirosNomes(nome)}, CPF ${cpf}. Simulei um empréstimo consignado (${nomeSegmento}) no site da Bravo Consig.\n` +
         `Valor liberado estimado: ${fmtBRL(melhor.valorLib)} em ${PRAZO}x (${melhor.nome}).\n` +
         `Quero solicitar, podem me ajudar?`
     );
@@ -135,6 +143,22 @@ export default function SimuladorCliente() {
         <div style={S.header}>
           <div style={S.logo}>Bravo Consig</div>
           <div style={S.headerSub}>Simulação de Empréstimo Consignado</div>
+        </div>
+
+        <div style={S.abas}>
+          {SEGMENTOS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSegmento(s.id)}
+              style={{
+                ...S.aba,
+                ...(segmento === s.id ? S.abaAtiva : {})
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
 
         {etapa === 1 && (
@@ -250,6 +274,23 @@ const S = {
   },
   logo: { fontSize: 22, fontWeight: 800, letterSpacing: 0.5 },
   headerSub: { fontSize: 13, color: "#c7cbe0", marginTop: 4 },
+  abas: {
+    display: "flex",
+    borderBottom: "1px solid #e5e7eb",
+    padding: "0 16px"
+  },
+  aba: {
+    flex: 1,
+    padding: "14px 4px 12px",
+    border: "none",
+    borderBottom: "3px solid transparent",
+    background: "transparent",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#9ca3af",
+    cursor: "pointer"
+  },
+  abaAtiva: { color: "#1a2035", borderBottomColor: "#8b5cf6" },
   form: { padding: 24, display: "flex", flexDirection: "column", gap: 4 },
   label: { fontSize: 13, fontWeight: 600, color: "#374151", marginTop: 12 },
   input: {
