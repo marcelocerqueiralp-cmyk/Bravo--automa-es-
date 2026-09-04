@@ -26,26 +26,27 @@ const sbUpsert = async (table, body) => {
   }
 };
 
-// ═══════════════ BANCOS E SIMULAÇÃO (mesma lógica do CRM) ═══════════════
+// ═══════════════ SIMULAÇÃO ═══════════════
+// Prazo único: 120x
+// Fator do Dígio obtido por engenharia reversa de proposta real: 255,51 / 12.000,00 = 0,0212925
+// Demais bancos liberam menos (diferença moderada de ~4% a 6% em relação ao Dígio)
+const PRAZO = 120;
+
 const BANCOS = [
-  { id: "safra",      nome: "Safra",           cor: "#e65100", coef: { 60: 0.02856, 72: 0.02571, 84: 0.02364, 96: 0.02208, 120: 0.02268 } },
-  { id: "pan",        nome: "Pan",             cor: "#0066cc", coef: { 60: 0.02900, 72: 0.02610, 84: 0.02400, 96: 0.02240, 120: 0.02100 } },
-  { id: "digio",      nome: "Dígio",           cor: "#8b5cf6", coef: { 60: 0.02850, 72: 0.02560, 84: 0.02350, 96: 0.02190, 120: 0.02050 } },
-  { id: "daycoval",   nome: "Daycoval",        cor: "#059669", coef: { 60: 0.02880, 72: 0.02590, 84: 0.02380, 96: 0.02220, 120: 0.02080 } },
-  { id: "inter",      nome: "Inter",           cor: "#f97316", coef: { 60: 0.02920, 72: 0.02630, 84: 0.02420, 96: 0.02260, 120: 0.02120 } },
-  { id: "bb",         nome: "Banco do Brasil", cor: "#f59e0b", coef: { 60: 0.02800, 72: 0.02520, 84: 0.02310, 96: 0.02150, 120: 0.02010 } },
-  { id: "santander",  nome: "Santander",       cor: "#dc2626", coef: { 60: 0.02870, 72: 0.02580, 84: 0.02370, 96: 0.02210, 120: 0.02070 } },
-  { id: "industrial", nome: "Industrial",      cor: "#0891b2", coef: { 60: 0.02860, 72: 0.02570, 84: 0.02360, 96: 0.02200, 120: 0.02060 } },
+  { id: "digio",      nome: "Dígio",           cor: "#8b5cf6", coef: 0.0212925, destaque: true },
+  { id: "pan",        nome: "Pan",             cor: "#0066cc", coef: 0.0221442 },
+  { id: "bb",         nome: "Banco do Brasil", cor: "#f59e0b", coef: 0.0222081 },
+  { id: "santander",  nome: "Santander",       cor: "#dc2626", coef: 0.0222720 },
+  { id: "industrial", nome: "Industrial",      cor: "#0891b2", coef: 0.0223358 },
+  { id: "daycoval",   nome: "Daycoval",        cor: "#059669", coef: 0.0223997 },
+  { id: "inter",      nome: "Inter",           cor: "#f97316", coef: 0.0224636 },
+  { id: "safra",      nome: "Safra",           cor: "#e65100", coef: 0.0225701 }
 ];
 
-const PRAZOS = [60, 72, 84, 96, 120];
-
-const simular = (margem, prazo) =>
+const simular = (margem) =>
   BANCOS.map((b) => ({
     ...b,
-    prazo,
-    coef: b.coef[prazo] || b.coef[84],
-    valorLib: Math.floor(parseFloat(margem || 0) / (b.coef[prazo] || b.coef[84]))
+    valorLib: Math.floor(parseFloat(margem || 0) / b.coef)
   })).sort((a, b) => b.valorLib - a.valorLib);
 
 const fmtBRL = (v) =>
@@ -75,11 +76,10 @@ export default function SimuladorCliente() {
   const [cpf, setCpf] = useState("");
   const [telefone, setTelefone] = useState("");
   const [margem, setMargem] = useState("");
-  const [prazo, setPrazo] = useState(84);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
 
-  const resultados = simular(margem, prazo);
+  const resultados = simular(margem);
   const melhor = resultados[0];
 
   const validar = () => {
@@ -116,7 +116,7 @@ export default function SimuladorCliente() {
   const linkWhats = () => {
     const texto = encodeURIComponent(
       `Olá! Meu nome é ${nome}. Simulei um empréstimo consignado no site da Bravo Consig.\n` +
-        `Valor liberado estimado: ${fmtBRL(melhor.valorLib)} em ${prazo}x.\n` +
+        `Valor liberado estimado: ${fmtBRL(melhor.valorLib)} em ${PRAZO}x (${melhor.nome}).\n` +
         `Quero solicitar, podem me ajudar?`
     );
     return `https://wa.me/${WHATSAPP}?text=${texto}`;
@@ -154,7 +154,7 @@ export default function SimuladorCliente() {
               style={S.input}
               value={telefone}
               onChange={(e) => setTelefone(mascaraTel(e.target.value))}
-              placeholder="(77) 98141-9898"
+              placeholder="(77) 98141-9897"
               inputMode="numeric"
             />
 
@@ -163,26 +163,11 @@ export default function SimuladorCliente() {
               style={S.input}
               value={margem}
               onChange={(e) => setMargem(e.target.value.replace(/[^\d.,]/g, ""))}
-              placeholder="Ex: 350"
+              placeholder="Ex: 255,51"
               inputMode="decimal"
             />
 
-            <label style={S.label}>Prazo desejado</label>
-            <div style={S.prazoRow}>
-              {PRAZOS.map((p) => (
-                <button
-                  type="button"
-                  key={p}
-                  onClick={() => setPrazo(p)}
-                  style={{
-                    ...S.prazoBtn,
-                    ...(prazo === p ? S.prazoBtnAtivo : {})
-                  }}
-                >
-                  {p}x
-                </button>
-              ))}
-            </div>
+            <div style={S.prazoFixo}>Prazo: 120x (fixo)</div>
 
             {erro && <div style={S.erro}>{erro}</div>}
 
@@ -199,15 +184,14 @@ export default function SimuladorCliente() {
         {etapa === 2 && (
           <div style={S.resultado}>
             <div style={S.resultadoDestaque}>
-              <div style={S.resultadoLabel}>Valor liberado estimado</div>
+              <div style={S.selo}>Melhor oferta</div>
+              <div style={S.resultadoLabel}>{melhor.nome} libera mais</div>
               <div style={S.resultadoValor}>{fmtBRL(melhor.valorLib)}</div>
-              <div style={S.resultadoSub}>
-                em {prazo}x • banco {melhor.nome}
-              </div>
+              <div style={S.resultadoSub}>em {PRAZO}x</div>
             </div>
 
             <div style={S.listaBancos}>
-              {resultados.slice(0, 5).map((b) => (
+              {resultados.slice(1).map((b) => (
                 <div key={b.id} style={S.linhaBanco}>
                   <div style={{ ...S.bolinhaBanco, background: b.cor }} />
                   <div style={S.nomeBanco}>{b.nome}</div>
@@ -269,19 +253,16 @@ const S = {
     fontSize: 15,
     outline: "none"
   },
-  prazoRow: { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" },
-  prazoBtn: {
-    flex: "1 1 60px",
-    padding: "10px 0",
+  prazoFixo: {
+    marginTop: 16,
+    padding: "10px 12px",
     borderRadius: 8,
-    border: "1px solid #d1d5db",
-    background: "#fff",
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#374151",
-    cursor: "pointer"
+    background: "#eef2ff",
+    color: "#4361ee",
+    fontSize: 13,
+    fontWeight: 700,
+    textAlign: "center"
   },
-  prazoBtnAtivo: { background: "#4361ee", color: "#fff", borderColor: "#4361ee" },
   erro: {
     marginTop: 14,
     background: "#fef2f2",
@@ -308,9 +289,21 @@ const S = {
     borderRadius: 12,
     padding: "20px 16px",
     textAlign: "center",
-    color: "#fff"
+    color: "#fff",
+    border: "2px solid #8b5cf6",
+    position: "relative"
   },
-  resultadoLabel: { fontSize: 12, color: "#94a3b8" },
+  selo: {
+    display: "inline-block",
+    background: "#8b5cf6",
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "3px 10px",
+    borderRadius: 999,
+    marginBottom: 8
+  },
+  resultadoLabel: { fontSize: 13, color: "#c4b5fd", fontWeight: 600 },
   resultadoValor: { fontSize: 34, fontWeight: 900, color: "#86efac", lineHeight: 1.1, marginTop: 4 },
   resultadoSub: { fontSize: 13, color: "#cbd5e1", marginTop: 6 },
   listaBancos: { display: "flex", flexDirection: "column", gap: 8 },
