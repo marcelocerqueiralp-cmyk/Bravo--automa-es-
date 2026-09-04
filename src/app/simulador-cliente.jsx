@@ -54,6 +54,13 @@ const fmtBRL = (v) =>
 
 const soDigitos = (s) => (s || "").replace(/\D/g, "");
 
+const primeirosNomes = (nomeCompleto) =>
+  (nomeCompleto || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join(" ");
+
 const mascaraCPF = (v) => {
   const d = soDigitos(v).slice(0, 11);
   return d
@@ -115,7 +122,7 @@ export default function SimuladorCliente() {
 
   const linkWhats = () => {
     const texto = encodeURIComponent(
-      `Olá! Meu nome é ${nome}. Simulei um empréstimo consignado no site da Bravo Consig.\n` +
+      `Olá! Meu nome é ${primeirosNomes(nome)}, CPF ${cpf}. Simulei um empréstimo consignado no site da Bravo Consig.\n` +
         `Valor liberado estimado: ${fmtBRL(melhor.valorLib)} em ${PRAZO}x (${melhor.nome}).\n` +
         `Quero solicitar, podem me ajudar?`
     );
